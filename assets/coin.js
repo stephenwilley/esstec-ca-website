@@ -62,7 +62,7 @@ struct VertexOut {
 
 @fragment fn fragmentMain(f : VertexOut) -> @location(0) vec4f {
   let n        = normalize(f.worldNormal);
-  const lightDir = normalize(vec3f(0.3, 0.5, 1.0));
+  let lightDir = normalize(vec3f(0.3, 0.5, 1.0));
   let diffuse  = max(dot(n, lightDir), 0.0);
   let ambient  = 0.35;
   let lighting = ambient + diffuse * 0.65;
@@ -99,26 +99,39 @@ async function initCoin() {
   // image remains visible as a fallback.
   if (!navigator.gpu) return;
 
-  const adapter = await navigator.gpu.requestAdapter();
-  if (!adapter) return;
+  try {
+    const adapter = await navigator.gpu.requestAdapter();
+    if (!adapter) return;
 
-  const device = await adapter.requestDevice();
+    const device = await adapter.requestDevice();
 
-  // Grab the existing <img> element before we touch the DOM.
-  const container = document.getElementById("avatar-container");
-  const avatarImg = container.querySelector("img");
+    // Grab the existing <img> element before we touch the DOM.
+    const container = document.getElementById("avatar-container");
+    const avatarImg = container.querySelector("img");
 
-  const avatarTexture               = await loadAvatarTexture(device, avatarImg);
-  const { canvas, context, format } = setupCanvas(device, container);
-  const { vertexBuffer, count }     = buildCoinGeometry(device);
-  const pipeline                    = createPipeline(device, format);
-  const { uniformBuffer, bindGroup }= createBindings(device, pipeline, avatarTexture);
-  const depthTexture                = createDepthTexture(device, canvas);
+    // Wait for the image to fully load before handing it to createImageBitmap.
+    // With `defer` the script can run before the image has decoded.
+    if (!avatarImg.complete) {
+      await new Promise((resolve, reject) => {
+        avatarImg.onload  = resolve;
+        avatarImg.onerror = reject;
+      });
+    }
 
-  runAnimationLoop(
-    device, context, pipeline, bindGroup,
-    vertexBuffer, count, uniformBuffer, depthTexture,
-  );
+    const avatarTexture               = await loadAvatarTexture(device, avatarImg);
+    const { canvas, context, format } = setupCanvas(device, container);
+    const { vertexBuffer, count }     = buildCoinGeometry(device);
+    const pipeline                    = createPipeline(device, format);
+    const { uniformBuffer, bindGroup }= createBindings(device, pipeline, avatarTexture);
+    const depthTexture                = createDepthTexture(device, canvas);
+
+    runAnimationLoop(
+      device, context, pipeline, bindGroup,
+      vertexBuffer, count, uniformBuffer, depthTexture,
+    );
+  } catch (err) {
+    console.warn("WebGPU coin init failed, using static image fallback:", err);
+  }
 }
 
 // ────────────────────────────────────────────────────────────────
