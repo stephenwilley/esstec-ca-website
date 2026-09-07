@@ -94,51 +94,96 @@ struct VertexOut {
 
 initCoin();
 
-async function initCoin() {
-  // Bail out silently when WebGPU is not available — the static
-  // image remains visible as a fallback.
+function initCoin() {
   if (!navigator.gpu) return;
 
-  try {
+  const container = document.getElementById("avatar-container");
+  const avatarImg = container?.querySelector("img");
+  if (!avatarImg) return;
+
+  const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  let stop = () => {};
+
+  function updateMotion() {
+    stop();
+    stop = motion.matches ? () => {} : startCoin(container, avatarImg);
+  }
+
+  motion.addEventListener("change", updateMotion);
+  updateMotion();
+}
+
+function startCoin(container, avatarImg) {
+  let stopped = false;
+  let device;
+  let context;
+  let stopAnimation = () => {};
+
+  function stop() {
+    if (stopped) return;
+    stopped = true;
+    stopAnimation();
+    container.replaceChildren(avatarImg);
+    container.classList.remove("is-animated");
+    context?.unconfigure();
+    device?.destroy();
+  }
+
+  function fail(err) {
+    if (stopped) return;
+    console.warn("WebGPU coin failed, using static image fallback:", err);
+    stop();
+  }
+
+  async function initialize() {
     const adapter = await navigator.gpu.requestAdapter();
-    if (!adapter) return;
+    if (!adapter || stopped) return;
 
-    const device = await adapter.requestDevice();
-
-    // Grab the existing <img> element before we touch the DOM.
-    const container = document.getElementById("avatar-container");
-    const avatarImg = container.querySelector("img");
-
-    // Wait for the image to fully load before handing it to createImageBitmap.
-    // With `defer` the script can run before the image has decoded.
-    if (!avatarImg.complete) {
-      await new Promise((resolve, reject) => {
-        avatarImg.onload  = resolve;
-        avatarImg.onerror = reject;
-      });
+    device = await adapter.requestDevice();
+    if (stopped) {
+      device.destroy();
+      return;
     }
 
+    device.lost.then(fail);
+    device.addEventListener("uncapturederror", event => fail(event.error));
+
+    await avatarImg.decode();
+    if (stopped) return;
     const avatarTexture               = await loadAvatarTexture(device, avatarImg);
-    const { canvas, context, format } = setupCanvas(device, container);
+    if (stopped) return;
+    const setup = setupCanvas(device);
+    context = setup.context;
+    const { canvas, format } = setup;
     const { vertexBuffer, count }     = buildCoinGeometry(device);
-    const pipeline                    = createPipeline(device, format);
+    const pipeline                    = await createPipeline(device, format);
+    if (stopped) return;
     const { uniformBuffer, bindGroup }= createBindings(device, pipeline, avatarTexture);
     const depthTexture                = createDepthTexture(device, canvas);
 
-    runAnimationLoop(
+    stopAnimation = runAnimationLoop(
       device, context, pipeline, bindGroup,
       vertexBuffer, count, uniformBuffer, depthTexture,
+      () => {
+        if (stopped) return;
+        canvas.setAttribute("role", "img");
+        canvas.setAttribute("aria-label", avatarImg.alt);
+        container.replaceChildren(canvas);
+        container.classList.add("is-animated");
+      },
+      fail,
     );
-  } catch (err) {
-    console.warn("WebGPU coin init failed, using static image fallback:", err);
   }
+
+  initialize().catch(fail);
+  return stop;
 }
 
 // ────────────────────────────────────────────────────────────────
 //  Canvas & WebGPU context
 // ────────────────────────────────────────────────────────────────
 
-function setupCanvas(device, container) {
+function setupCanvas(device) {
   const dpr       = window.devicePixelRatio || 1;
   const pixelSize = Math.round(CANVAS_CSS_PX * dpr);
 
@@ -153,12 +198,9 @@ function setupCanvas(device, container) {
     "drop-shadow(0 0 14px rgba(255,255,255,0.65)) " +
     "drop-shadow(0 0 5px  rgba(255,255,255,0.30))";
 
-  // Swap out the static image for the live canvas.
-  container.replaceChildren(canvas);
-  container.classList.remove("bg-white", "shadow-whiteGlow", "rounded-full");
-
   const format  = navigator.gpu.getPreferredCanvasFormat();
   const context = canvas.getContext("webgpu");
+  if (!context) throw new Error("WebGPU canvas context is unavailable");
   context.configure({ device, format, alphaMode: "premultiplied" });
 
   return { canvas, context, format };
@@ -177,11 +219,15 @@ async function loadAvatarTexture(device, imgElement) {
             GPUTextureUsage.COPY_DST        |
             GPUTextureUsage.RENDER_ATTACHMENT,
   });
-  device.queue.copyExternalImageToTexture(
-    { source: bitmap },
-    { texture },
-    [bitmap.width, bitmap.height],
-  );
+  try {
+    device.queue.copyExternalImageToTexture(
+      { source: bitmap },
+      { texture },
+      [bitmap.width, bitmap.height],
+    );
+  } finally {
+    bitmap.close();
+  }
   return texture;
 }
 
@@ -253,7 +299,7 @@ function buildCoinGeometry(device) {
 function createPipeline(device, format) {
   const module = device.createShaderModule({ code: SHADER_CODE });
 
-  return device.createRenderPipeline({
+  return device.createRenderPipelineAsync({
     layout: "auto",
     vertex: {
       module,
@@ -344,10 +390,13 @@ function writeUniforms(device, uniformBuffer, elapsedSec) {
 function runAnimationLoop(
   device, context, pipeline, bindGroup,
   vertexBuffer, vertexCount, uniformBuffer, depthTexture,
+  onReady, onError,
 ) {
   const t0 = performance.now() / 1000;
+  let stopped = false;
+  let frameId;
 
-  function frame() {
+  function render() {
     const elapsed = performance.now() / 1000 - t0;
     writeUniforms(device, uniformBuffer, elapsed);
 
@@ -377,10 +426,39 @@ function runAnimationLoop(
     pass.end();
 
     device.queue.submit([encoder.finish()]);
-    requestAnimationFrame(frame);
   }
 
-  requestAnimationFrame(frame);
+  function frame() {
+    if (stopped) return;
+    try {
+      render();
+      frameId = requestAnimationFrame(frame);
+    } catch (err) {
+      onError(err);
+    }
+  }
+
+  async function firstFrame() {
+    // Validation errors are asynchronous: check the first draw before
+    // replacing the fallback, then monitor uncaptured errors while spinning.
+    device.pushErrorScope("validation");
+    try {
+      render();
+    } finally {
+      const error = await device.popErrorScope();
+      if (error) throw error;
+    }
+    await device.queue.onSubmittedWorkDone();
+    if (stopped) return;
+    onReady();
+    frameId = requestAnimationFrame(frame);
+  }
+
+  firstFrame().catch(onError);
+  return () => {
+    stopped = true;
+    cancelAnimationFrame(frameId);
+  };
 }
 
 // ────────────────────────────────────────────────────────────────
