@@ -1,0 +1,1276 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="A feather, a meadow, and a little time. A place to rest.">
+<title>Still • a little time outside</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪶</text></svg>">
+<style>
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #cadbb8;
+}
+
+body {
+  font-family: Georgia, 'Times New Roman', serif;
+  color: #fff9e9;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: grab;
+  filter: blur(.7px);
+}
+
+canvas.dragging {
+  cursor: grabbing;
+}
+
+/* Soft vignette over the whole scene. */
+.veil {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 45% 43%, transparent 43%, rgba(38, 56, 37, .19) 100%);
+  box-shadow: inset 0 0 100px #d7e4c01a;
+}
+
+header {
+  position: fixed;
+  top: 38px;
+  left: 44px;
+  pointer-events: none;
+  transition: opacity 5s;
+}
+
+h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: normal;
+  letter-spacing: .28em;
+  text-transform: lowercase;
+}
+
+header p {
+  font-size: 13px;
+  letter-spacing: .08em;
+  opacity: .75;
+  margin: 11px 0;
+}
+
+#hint {
+  position: fixed;
+  bottom: 49px;
+  left: 20px;
+  right: 20px;
+  text-align: center;
+  pointer-events: none;
+  text-shadow: 0 2px 18px #253f24;
+  transition: opacity 5s;
+}
+
+#hint p {
+  font-size: 21px;
+  font-style: italic;
+  letter-spacing: .025em;
+  margin: 0 0 13px;
+}
+
+#hint span {
+  font-family: system-ui, sans-serif;
+  font-size: 12px;
+  letter-spacing: .07em;
+  opacity: .76;
+}
+
+/* Added to <body> once the scene has been running a while: the words fade away. */
+.settled #hint,
+.settled header {
+  opacity: 0;
+}
+
+/* An onboarding nudge that fades in only if the meadow sits untouched. */
+#gust-tip {
+  position: fixed;
+  bottom: 49px;
+  left: 20px;
+  right: 20px;
+  text-align: center;
+  pointer-events: none;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 21px;
+  font-style: italic;
+  letter-spacing: .025em;
+  color: #fff9e9;
+  text-shadow: 0 2px 18px #253f24;
+  opacity: 0;
+  transition: opacity 1.2s;
+}
+
+#gust-tip.visible {
+  opacity: .82;
+}
+
+#pause {
+  position: fixed;
+  right: 24px;
+  bottom: 20px;
+  font: 12px system-ui, sans-serif;
+  letter-spacing: .08em;
+  color: #fff9e9;
+  background: rgba(36, 62, 37, .16);
+  border: 1px solid #ffffff33;
+  padding: 9px 15px;
+  border-radius: 25px;
+  opacity: .5;
+  cursor: pointer;
+  transition: opacity .5s;
+}
+
+#pause:hover,
+#pause:focus-visible {
+  opacity: 1;
+}
+
+#error {
+  position: fixed;
+  inset: 0;
+  padding: 20vh 10vw;
+  background: #39574a;
+  font-size: 22px;
+}
+
+#error p {
+  max-width: 550px;
+  line-height: 1.6;
+}
+
+@media (max-width: 600px) {
+  header {
+    top: 25px;
+    left: 25px;
+  }
+
+  #hint {
+    bottom: 80px;
+  }
+
+  #hint p {
+    font-size: 19px;
+  }
+
+  #gust-tip {
+    bottom: 80px;
+    font-size: 19px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  header,
+  #hint,
+  #gust-tip {
+    transition: opacity 1s;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<canvas tabindex="0" aria-label="A procedurally generated feather drifting above a sunlit meadow. Tap for a gentle gust, double tap for a lifting gust. Drag to orbit; scroll or pinch to zoom. G creates a gust, Shift G adds lift. Arrow keys rotate, zero resets, and space pauses."></canvas>
+
+<div class="veil"></div>
+
+<header>
+  <h1>still</h1>
+  <p>a little time outside</p>
+</header>
+
+<div id="hint">
+  <p>The wind plays its own music. Bert McCoy</p>
+</div>
+
+<div id="gust-tip" aria-hidden="true">Tap to gust</div>
+
+<button id="pause" aria-label="Pause or resume the meadow animation" aria-pressed="false">Pause</button>
+
+<div id="error" hidden>
+  <p>This little meadow needs WebGL. Please open this file in a browser with hardware acceleration enabled.</p>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+(() => {
+  'use strict';
+
+  const canvas = document.querySelector('canvas');
+  const hint = document.querySelector('#hint');
+  const gustTip = document.querySelector('#gust-tip');
+
+  // ---------------------------------------------------------------------------
+  // Renderer, scene, camera and light
+  // ---------------------------------------------------------------------------
+
+  let renderer;
+  try {
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+  } catch (e) {
+    document.querySelector('#error').hidden = false;
+    return;
+  }
+
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.06;
+
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0xb8dec6, .007);
+
+  const camera = new THREE.PerspectiveCamera(43, innerWidth / innerHeight, .08, 400);
+
+  scene.add(new THREE.HemisphereLight(0xd8f0ff, 0x507325, 1.65));
+  const sun = new THREE.DirectionalLight(0xffedc5, 2.25);
+  sun.position.set(-30, 35, -40);
+  scene.add(sun);
+
+  // A plain, repeatable generator used for scenery that never needs to be re-created.
+  let seed = 187;
+  function rnd() {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Sky dome: gradient, sun glow and a hint of cloud, all in one shader.
+  // ---------------------------------------------------------------------------
+
+  const sky = new THREE.Mesh(
+    new THREE.SphereGeometry(260, 40, 24),
+    new THREE.ShaderMaterial({
+      side: THREE.BackSide,
+      depthWrite: false,
+      uniforms: {},
+      vertexShader: `
+        varying vec3 vP;
+        void main() {
+          vP = position;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.);
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vP;
+        void main() {
+          vec3 d = normalize(vP);
+          float h = .5 * (d.y + sqrt(d.y * d.y + .0016));
+          vec3 c = mix(vec3(.59, .84, .93), vec3(.025, .32, .80), pow(h, .30));
+          vec3 s = normalize(vec3(-.48, .32, -.8));
+          float a = max(dot(d, s), 0.);
+          c += vec3(1., .70, .31) * pow(a, 18.) * .48;
+          c += vec3(1., .86, .61) * pow(a, 380.) * 1.5;
+          float clouds = sin(d.x * 12. + sin(d.z * 9.)) * sin(d.z * 17. + d.x * 4.);
+          float cloud = smoothstep(.05, .8, clouds) * smoothstep(.13, .23, h) * (1. - smoothstep(.28, .49, h));
+          c = mix(c, vec3(.91, .96, .89), cloud * .10);
+          c = mix(vec3(.72, .87, .78), c, smoothstep(-.10, .13, d.y));
+          gl_FragColor = vec4(c, 1.);
+        }
+      `
+    })
+  );
+  scene.add(sky);
+
+  // ---------------------------------------------------------------------------
+  // The meadow
+  // ---------------------------------------------------------------------------
+
+  // An endless world is indexed by fixed cells. Its contents belong to the land,
+  // so returning to a cell regenerates the same hills, plants and stones.
+  const CELL = 32, RADIUS = 4;
+
+  const world = new THREE.Group();
+  scene.add(world);
+
+  const uniforms = {
+    time: { value: 0 },
+    travel: { value: new THREE.Vector2() }
+  };
+
+  function hashCell(x, z) {
+    let h = Math.imul(x, 374761393) ^ Math.imul(z, 668265263) ^ 187;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return (h ^ (h >>> 16)) >>> 0;
+  }
+
+  // A generator seeded by cell coordinates: the same cell always draws the same numbers.
+  function cellRandom(x, z) {
+    let s = hashCell(x, z);
+    return () => {
+      s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+      return s / 4294967296;
+    };
+  }
+
+  // Rolling hills: a few sine waves layered at different scales.
+  function height(x, z) {
+    return -.55
+      + 3.8 * Math.sin(x * .037 + z * .021)
+      + 3.1 * Math.sin(z * .055 - x * .018)
+      + 1.4 * Math.cos(x * .079 + z * .041)
+      + .27 * Math.sin(x * .16 - z * .13);
+  }
+
+  // ---------------------------------------------------------------------------
+  // The wandering journey: where the wind carries us across the meadow.
+  // ---------------------------------------------------------------------------
+
+  const pathSeed = crypto.getRandomValues(new Uint32Array(1))[0];
+  const pathPosition = { x: 0, z: 0 };
+  let windAngle = 0, windTurnVelocity = 0, windSpeed = .43, turnImpulse = 0;
+
+  // Smoothly interpolated value noise, sampled along time.
+  function windNoise(t, salt) {
+    const i = Math.floor(t), u = t - i, w = u * u * u * (u * (u * 6 - 15) + 10);
+    function sample(n) {
+      let h = Math.imul(n ^ pathSeed ^ salt, 1597334677);
+      h = Math.imul(h ^ (h >>> 16), 2246822519);
+      return ((h ^ (h >>> 13)) >>> 0) / 4294967296 * 2 - 1;
+    }
+    return sample(i) * (1 - w) + sample(i + 1) * w;
+  }
+
+  function advanceJourney(t, dt) {
+    turnImpulse *= Math.exp(-dt * .6);
+
+    const targetTurn = windNoise(t / 19, 71) * .060 + windNoise(t / 47, 83) * .025 + turnImpulse;
+    windTurnVelocity += (targetTurn - windTurnVelocity) * (1 - Math.exp(-dt * .7));
+    windAngle += windTurnVelocity * dt;
+
+    windSpeed += (.43 + windNoise(t / 13, 29) * .13 - windSpeed) * (1 - Math.exp(-dt * .45));
+
+    pathPosition.x += Math.sin(windAngle) * windSpeed * dt;
+    pathPosition.z -= Math.cos(windAngle) * windSpeed * dt;
+    return pathPosition;
+  }
+
+  const travel = new THREE.Vector2();
+
+  // ---------------------------------------------------------------------------
+  // Materials: ground mottling, wind-swept grass and flowers.
+  // ---------------------------------------------------------------------------
+
+  const groundM = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });
+  groundM.onBeforeCompile = s => {
+    s.uniforms.travel = uniforms.travel;
+
+    s.vertexShader = 'uniform vec2 travel;varying vec3 meadowPoint;\n' + s.vertexShader;
+    s.vertexShader = s.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      meadowPoint = (modelMatrix * vec4(position, 1.)).xyz;
+      meadowPoint.xz += travel;`);
+
+    s.fragmentShader = 'varying vec3 meadowPoint;\n' + s.fragmentShader;
+    s.fragmentShader = s.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+      float mottling = .5 + .5 * sin(meadowPoint.x * .43 + sin(meadowPoint.z * .25)) * sin(meadowPoint.z * .67);
+      float fine = fract(sin(dot(floor(meadowPoint.xz * 12.), vec2(12.9898, 78.233))) * 43758.5453);
+      diffuseColor.rgb *= .48 + .25 * mottling + .10 * fine;`);
+  };
+
+  const grassM = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, toneMapped: false });
+  grassM.onBeforeCompile = s => {
+    s.uniforms.time = uniforms.time;
+    s.uniforms.travel = uniforms.travel;
+
+    s.vertexShader =
+      'uniform float time;uniform vec2 travel;attribute vec3 offset;attribute float size;attribute float detail;attribute float angle;\n' +
+      s.vertexShader;
+
+    // Each instance is placed by "offset", turned by "angle", and bent by the wind.
+    // Detail blades (detail > .5) shrink away in the distance instead of popping out.
+    s.vertexShader = s.vertexShader.replace('#include <begin_vertex>', `vec3 transformed = offset;
+      vec2 relative = (modelMatrix * vec4(offset, 1.)).xz;
+      float grow = detail > .5 ? 1. - smoothstep(44., 66., length(relative)) : 1.;
+      vec3 blade = position;
+      blade.xz = mat2(cos(angle), -sin(angle), sin(angle), cos(angle)) * blade.xz;
+      transformed += blade * size * grow;
+      vec2 land = relative + travel;
+      float h = position.y * size * grow;
+      transformed.x += (sin(land.x * .24 + land.y * .19 - time * .78) * .24 + sin(land.y * .57 - time * 1.05) * .085) * h * h;
+      transformed.z += sin(land.x * .19 + time * .45) * h * .12;`);
+  };
+
+  // Reusable five-blade clump, from shaded roots to light green tips.
+  const bladeP = [], bladeC = [];
+  for (let j = 0; j < 5; j++) {
+    const a = j * 2.399,
+      ox = Math.cos(a) * .11, oz = Math.sin(a) * .11,
+      dx = Math.cos(a) * .042, dz = Math.sin(a) * .042,
+      h = .78 + (j % 3) * .16;
+    const pts = [
+      [ox - dx, 0, oz - dz],
+      [ox + dx, 0, oz + dz],
+      [ox + .18 + dx * .5, h * .56, oz + dz * .5],
+      [ox - dx, 0, oz - dz],
+      [ox + .18 + dx * .5, h * .56, oz + dz * .5],
+      [ox + .18 - dx * .5, h * .56, oz - dz * .5],
+      [ox + .18 - dx * .5, h * .56, oz - dz * .5],
+      [ox + .18 + dx * .5, h * .56, oz + dz * .5],
+      [ox + .33, h, oz + .055]
+    ];
+    for (const p of pts) {
+      bladeP.push(...p);
+      const u = p[1] / h, c = new THREE.Color().setHSL(.245 + j * .005, .8, .037 + u * .145);
+      bladeC.push(c.r, c.g, c.b);
+    }
+  }
+
+  const floralM = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, toneMapped: false });
+  floralM.onBeforeCompile = s => {
+    s.uniforms.time = uniforms.time;
+    s.uniforms.travel = uniforms.travel;
+
+    s.vertexShader = 'uniform float time;uniform vec2 travel;attribute float root;\n' + s.vertexShader;
+
+    // "root" is the ground height of each flower, so only the part above it sways.
+    s.vertexShader = s.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      vec2 land = (modelMatrix * vec4(position, 1.)).xz + travel;
+      float h = max(0., position.y - root);
+      transformed.x += (sin(land.x * .24 + land.y * .19 - time * .78) * .24 + sin(land.y * .57 - time * 1.05) * .085) * h * h;
+      transformed.z += sin(land.x * .19 + time * .45) * h * .12;`);
+  };
+
+  const rockM = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 });
+
+  // ---------------------------------------------------------------------------
+  // Flowers: stem, petals, centre and a couple of leaves, built as raw triangles.
+  // ---------------------------------------------------------------------------
+
+  function flowersForCell(cx, cz, random) {
+    const pos = [], col = [], roots = [], baseX = cx * CELL, baseZ = cz * CELL;
+
+    function tri(a, b, c, tint, root) {
+      for (const p of [a, b, c]) {
+        pos.push(...p);
+        col.push(tint.r, tint.g, tint.b);
+        roots.push(root);
+      }
+    }
+
+    const count = 65 + Math.floor(random() * 45);
+
+    for (let i = 0; i < count; i++) {
+      const x = random() * CELL, z = random() * CELL,
+        base = height(baseX + x, baseZ + z),
+        h = .92 + random() * .74,
+        y = base + h;
+
+      const kind = Math.floor(random() * 4),
+        petals = kind === 0 ? 9 + Math.floor(random() * 4) : kind === 2 ? 4 : 5;
+
+      const radius = (kind === 0 ? .135 : kind === 2 ? .20 : .12) * (.7 + random() * .65),
+        turn = random() * 6.28,
+        tiltX = (random() - .5) * .7,
+        tiltZ = (random() - .5) * .7;
+
+      const tint = new THREE.Color([0xfff7db, 0xffc20a, 0xff451a, 0x9f70e9][kind]);
+      tint.offsetHSL((random() - .5) * .04, 0, (random() - .5) * .09);
+
+      // Local frame of the flower head: the tilt leans the whole bloom over.
+      function point(px, py, pz) {
+        return [x + px, y + py + px * tiltX + pz * tiltZ, z + pz];
+      }
+
+      // Stem: two crossed quads so it reads from every angle.
+      const green = new THREE.Color(0x47762b);
+      tri([x - .009, base, z], [x + .009, base, z], [x + .009, y, z], green, base);
+      tri([x - .009, base, z], [x + .009, y, z], [x - .009, y, z], green, base);
+      tri([x, base, z - .009], [x, base, z + .009], [x, y, z + .009], green, base);
+      tri([x, base, z - .009], [x, y, z + .009], [x, y, z - .009], green, base);
+
+      for (let j = 0; j < petals; j++) {
+        const a = turn + j * 6.283 / petals + (random() - .5) * .14,
+          len = radius * (.8 + random() * .4),
+          width = len * (kind === 0 ? .30 : .67),
+          cup = (kind === 2 ? .045 : .027) * (1 + random()),
+          pc = tint.clone().multiplyScalar(.87 + random() * .22);
+
+        // u runs along the petal, v across it.
+        function petal(u, v) {
+          const lateral = Math.sin(Math.PI * u) * width * v, rad = .022 + u * len;
+          return point(
+            Math.cos(a) * rad - Math.sin(a) * lateral,
+            cup * u * u + .012 * Math.sin(u * 5 + j) + v * v * .014,
+            Math.sin(a) * rad + Math.cos(a) * lateral
+          );
+        }
+
+        for (let k = 0; k < 4; k++) {
+          for (let n = 0; n < 2; n++) {
+            const u = k / 4, v = (k + 1) / 4, l = n - 1, r = n,
+              shade = pc.clone().multiplyScalar(.60 + .40 * Math.sin((u + v) * .5 * Math.PI));
+            tri(petal(u, l), petal(v, l), petal(v, r), shade, base);
+            tri(petal(u, l), petal(v, r), petal(u, r), shade, base);
+          }
+        }
+      }
+
+      // Centre disc.
+      const center = new THREE.Color(kind === 2 ? 0x664135 : 0xeeb737);
+      for (let j = 0; j < 10; j++) {
+        const a = j * 6.283 / 10, b = (j + 1) * 6.283 / 10;
+        tri(
+          point(0, .025, 0),
+          point(Math.cos(a) * .038, .014, Math.sin(a) * .038),
+          point(Math.cos(b) * .038, .014, Math.sin(b) * .038),
+          center, base
+        );
+      }
+
+      // One leaf on each side of the stem.
+      for (let j = 0; j < 2; j++) {
+        const side = j ? 1 : -1, yy = base + h * (.27 + j * .24);
+        tri(
+          [x, yy, z],
+          [x + side * .17, yy + .14, z + .035],
+          [x + side * .055, yy + .14, z - .04],
+          new THREE.Color(0x5a932e), base
+        );
+      }
+    }
+
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    g.setAttribute('root', new THREE.Float32BufferAttribute(roots, 1));
+    return new THREE.Mesh(g, floralM);
+  }
+
+  // ---------------------------------------------------------------------------
+  // One cell of the world: ground, grass, flowers and the occasional stone.
+  // ---------------------------------------------------------------------------
+
+  function makeCell(cx, cz) {
+    const random = cellRandom(cx, cz), group = new THREE.Group();
+    group.position.set(cx * CELL, 0, cz * CELL);
+
+    // Ground: a plane pushed into the hills, tinted per vertex.
+    const g = new THREE.PlaneGeometry(CELL, CELL, 20, 20);
+    g.rotateX(-Math.PI / 2);
+    g.translate(CELL / 2, 0, CELL / 2);
+    const p = g.attributes.position, c = [];
+    for (let i = 0; i < p.count; i++) {
+      const x = cx * CELL + p.getX(i), z = cz * CELL + p.getZ(i);
+      p.setY(i, height(x, z));
+      const tint = new THREE.Color().setHSL(
+        .24 + .015 * Math.sin(x * .025 + z * .032),
+        .77,
+        .15 + .016 * Math.sin(z * .07 + x * .04)
+      );
+      c.push(tint.r, tint.g, tint.b);
+    }
+    g.setAttribute('color', new THREE.Float32BufferAttribute(c, 3));
+    group.add(new THREE.Mesh(g, groundM));
+
+    // Grass: the shared clump, instanced thousands of times across the cell.
+    const grassG = new THREE.InstancedBufferGeometry();
+    grassG.setAttribute('position', new THREE.Float32BufferAttribute(bladeP, 3));
+    grassG.setAttribute('color', new THREE.Float32BufferAttribute(bladeC, 3));
+
+    const offsets = [], sizes = [], details = [], angles = [], baseCount = 1350, extraCount = 2800;
+    for (let i = 0; i < baseCount + extraCount; i++) {
+      const x = random() * CELL, z = random() * CELL;
+      offsets.push(x, height(cx * CELL + x, cz * CELL + z), z);
+      sizes.push(.7 + random() * .7);
+      details.push(i < baseCount ? 0 : 1);
+      angles.push(random() * Math.PI * 2);
+    }
+
+    grassG.setAttribute('offset', new THREE.InstancedBufferAttribute(new Float32Array(offsets), 3));
+    grassG.setAttribute('size', new THREE.InstancedBufferAttribute(new Float32Array(sizes), 1));
+    grassG.setAttribute('detail', new THREE.InstancedBufferAttribute(new Float32Array(details), 1));
+    grassG.setAttribute('angle', new THREE.InstancedBufferAttribute(new Float32Array(angles), 1));
+    grassG.instanceCount = baseCount;
+
+    const grass = new THREE.Mesh(grassG, grassM);
+    grass.frustumCulled = false;
+    group.add(grass);
+    group.add(flowersForCell(cx, cz, random));
+
+    // One possible stone per 128m square, with only a small positional jitter.
+    if (((cx % 4) + 4) % 4 === 1 && ((cz % 4) + 4) % 4 === 2) {
+      const x = 10 + random() * 12, z = 10 + random() * 12,
+        rg = new THREE.IcosahedronGeometry(1, 2), rp = rg.attributes.position, rc = [];
+      for (let i = 0; i < rp.count; i++) {
+        let x = rp.getX(i), y = rp.getY(i), z = rp.getZ(i),
+          n = 1 + .1 * Math.sin(x * 7 + y * 3) * Math.sin(z * 6 - x * 2);
+        rp.setXYZ(i, x * n, y * n, z * n);
+        const moss = Math.max(0, .35 - y * .55),
+          c = new THREE.Color().setHSL(.12 + moss * .14, .05 + moss * .26, .20 + .065 * (y + 1) / 2);
+        rc.push(c.r, c.g, c.b);
+      }
+      rg.setAttribute('color', new THREE.Float32BufferAttribute(rc, 3));
+      rg.computeVertexNormals();
+      const rock = new THREE.Mesh(rg, rockM);
+      rock.scale.set(1.1 + random() * .5, .8 + random() * .3, 1);
+      rock.rotation.y = random() * 6.28;
+      rock.position.set(x, height(cx * CELL + x, cz * CELL + z) + .3, z);
+      group.add(rock);
+    }
+
+    world.add(group);
+    return { cx, cz, group, grassG, baseCount, extraCount };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Streaming: keep a square of cells around us, build and drop them as we drift.
+  // ---------------------------------------------------------------------------
+
+  const cells = new Map();
+  let activeCellX = Infinity, activeCellZ = Infinity, pending = [];
+
+  function cellKey(x, z) {
+    return x + ',' + z;
+  }
+
+  function streamWorld(x, z, initial = false) {
+    const cx = Math.floor(x / CELL), cz = Math.floor(z / CELL);
+
+    if (cx !== activeCellX || cz !== activeCellZ) {
+      activeCellX = cx;
+      activeCellZ = cz;
+      pending = [];
+
+      for (let dz = -RADIUS; dz <= RADIUS; dz++) {
+        for (let dx = -RADIUS; dx <= RADIUS; dx++) {
+          const a = cx + dx, b = cz + dz;
+          if (!cells.has(cellKey(a, b))) pending.push([a, b]);
+        }
+      }
+
+      // Nearest cells first, so the world fills in around us outward.
+      pending.sort((a, b) => Math.hypot(a[0] - cx, a[1] - cz) - Math.hypot(b[0] - cx, b[1] - cz));
+
+      for (const [key, cell] of cells) {
+        if (Math.abs(cell.cx - cx) > RADIUS || Math.abs(cell.cz - cz) > RADIUS) {
+          world.remove(cell.group);
+          cell.group.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+          cells.delete(key);
+        }
+      }
+    }
+
+    // Build one small cell per frame in the distant haze; first load fills the whole window.
+    let count = initial ? pending.length : 1;
+    while (count-- && pending.length) {
+      const [a, b] = pending.shift();
+      cells.set(cellKey(a, b), makeCell(a, b));
+    }
+
+    // Nearby cells show their extra grass; distant ones only the base layer.
+    for (const cell of cells.values()) {
+      const dx = Math.max(cell.cx * CELL - x, 0, x - (cell.cx + 1) * CELL),
+        dz = Math.max(cell.cz * CELL - z, 0, z - (cell.cz + 1) * CELL);
+      cell.grassG.instanceCount = cell.baseCount + (Math.hypot(dx, dz) < 67 ? cell.extraCount : 0);
+    }
+
+    // Rather than moving the camera forever outward, the world slides beneath us.
+    world.position.set(-x, 0, -z);
+    uniforms.travel.value.set(x, z);
+  }
+
+  streamWorld(0, 0, true);
+
+  // ---------------------------------------------------------------------------
+  // The feather
+  // ---------------------------------------------------------------------------
+
+  // Each visit grows a new feather: an independent seed leaves the meadow undisturbed.
+  const featherSeed = crypto.getRandomValues(new Uint32Array(1))[0];
+  let featherState = featherSeed;
+  function fr() {
+    featherState = (Math.imul(featherState, 1664525) + 1013904223) >>> 0;
+    return featherState / 4294967296;
+  }
+
+  const feather = new THREE.Group();
+  scene.add(feather);
+
+  // Remember the last variant so a return visit brings a different feather.
+  let featherKind = Math.floor(fr() * 5);
+  try {
+    const previous = Number(localStorage.getItem('still-last-feather'));
+    if (localStorage.getItem('still-last-feather') !== null) {
+      featherKind = (previous + 1 + Math.floor(fr() * 4)) % 5;
+    }
+    localStorage.setItem('still-last-feather', String(featherKind));
+  } catch {}
+
+  const profiles = [
+    { h: .11,  s: .12,  l: .65, len: 1.9,  w: .40 },
+    { h: .60,  s: .10,  l: .49, len: 2.3,  w: .25 },
+    { h: .085, s: .28,  l: .52, len: 1.8,  w: .46 },
+    { h: .69,  s: .12,  l: .48, len: 2.1,  w: .34 },
+    { h: .12,  s: .035, l: .72, len: 1.65, w: .49 }
+  ];
+
+  const profile = profiles[featherKind],
+    featherLength = profile.len * (.9 + fr() * .2),
+    featherWidth = profile.w * (.88 + fr() * .24),
+    featherCurve = (fr() - .45) * .67,
+    featherTwist = (fr() - .5) * .65,
+    featherAsym = .60 + fr() * .56;
+
+  const featherHue = profile.h, featherSat = 0, featherTone = profile.l;
+
+  canvas.dataset.featherVariant = String(featherKind);
+  canvas.dataset.featherSeed = String(featherSeed);
+
+  // A handful of small tears along each edge of the vane.
+  const splits = [[], []];
+  for (let side = 0; side < 2; side++) {
+    for (let i = 0; i < 4 + Math.floor(fr() * 3); i++) {
+      splits[side].push({ t: .30 + fr() * .63, span: .005 + fr() * .009, depth: .14 + fr() * .28 });
+    }
+  }
+
+  // The curved central shaft, parameterised from base (t=0) to tip (t=1).
+  function shaft(t) {
+    return new THREE.Vector3(
+      featherCurve * Math.sin(t * 2.3) + .12 * t * t,
+      t * featherLength - featherLength * .50,
+      .075 * Math.sin(t * 3.3) + featherTwist * t * t * .18
+    );
+  }
+
+  // Half-width of the vane at t, on the given side, including the tears.
+  function edge(t, side) {
+    const a = Math.max(0, Math.sin(Math.PI * (t - .16) / .84));
+    let w = featherWidth * Math.pow(a, .68) * (side < 0 ? featherAsym : 1);
+    w *= 1 + .035 * Math.sin(t * 61 + side) + .018 * Math.sin(t * 173);
+    for (const cut of splits[side < 0 ? 0 : 1]) {
+      const q = (t - cut.t) / cut.span;
+      w *= 1 - cut.depth * Math.exp(-q * q);
+    }
+    return w;
+  }
+
+  // A point on one barb: t along the shaft, u from the shaft out to the edge.
+  function barbPoint(t, side, u, flutter = 0) {
+    const p = shaft(t), w = edge(t, side);
+    p.x += side * w * u;
+    p.y += (.16 + .40 * Math.sin(t * Math.PI)) * (1 - t) * Math.pow(u, .78);
+    p.z += Math.sin(u * Math.PI) * (.06 + .025 * Math.sin(t * 8))
+      + side * u * featherTwist * (t - .3)
+      + flutter * u * u;
+    return p;
+  }
+
+  const featherV = [], featherC = [];
+  function ftri(a, b, c, ca, cb = ca, cc = ca) {
+    featherV.push(...a.toArray(), ...b.toArray(), ...c.toArray());
+    featherC.push(ca.r, ca.g, ca.b, cb.r, cb.g, cb.b, cc.r, cc.g, cc.b);
+  }
+
+  // Closely interlocking curved barbs create the vane, with intentional tiny tears.
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < 410; i++) {
+      const t = .185 + i / 410 * .809, noise = fr(), flutter = (noise - .5) * .018;
+      const baseTone = featherTone - .06 + fr() * .16,
+        shade = new THREE.Color().setHSL(featherHue, featherSat, baseTone);
+      const strandWidth = .0016 + fr() * .00085;
+
+      for (let j = 0; j < 10; j++) {
+        const u = j / 10, v = (j + 1) / 10;
+
+        // The two lips of one strand, thinning towards its outer end.
+        function point(q, sign) {
+          const p = barbPoint(t, side, q, flutter);
+          p.y += sign * strandWidth * (1 - .65 * q * q);
+          return p;
+        }
+
+        const a = point(u, -1), b = point(u, 1), c = point(v, 1), d = point(v, -1);
+        const c1 = shade.clone().multiplyScalar(.88 + .16 * Math.sin(u * Math.PI) + u * .14),
+          c2 = shade.clone().multiplyScalar(.88 + .16 * Math.sin(v * Math.PI) + v * .14);
+        ftri(a, b, c, c1, c1, c2);
+        ftri(a, c, d, c1, c2, c2);
+      }
+    }
+  }
+
+  const featherG = new THREE.BufferGeometry();
+  featherG.setAttribute('position', new THREE.Float32BufferAttribute(featherV, 3));
+  featherG.setAttribute('color', new THREE.Float32BufferAttribute(featherC, 3));
+  feather.add(new THREE.Mesh(featherG, new THREE.MeshBasicMaterial({
+    vertexColors: true,
+    side: THREE.DoubleSide,
+    toneMapped: false
+  })));
+
+  // A delicate, shaded inner vane supports the overlapping fibres without sealing the edge.
+  const innerP = [], innerC = [];
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < 140; i++) {
+      const t = .24 + i / 140 * .755, q = .24 + (i + 1) / 140 * .755;
+      for (let j = 0; j < 4; j++) {
+        const u = j / 4 * .89, v = (j + 1) / 4 * .89;
+        const quads = [
+          [barbPoint(t, side, u), barbPoint(t, side, v), barbPoint(q, side, v)],
+          [barbPoint(t, side, u), barbPoint(q, side, v), barbPoint(q, side, u)]
+        ];
+        for (const pts of quads) {
+          for (const p of pts) {
+            innerP.push(p.x, p.y, p.z - .015);
+            const col = new THREE.Color().setHSL(
+              featherHue,
+              featherSat,
+              featherTone - .08 + .13 * (j / 4) + .035 * Math.sin(t * 9)
+            );
+            innerC.push(col.r, col.g, col.b);
+          }
+        }
+      }
+    }
+  }
+
+  const innerG = new THREE.BufferGeometry();
+  innerG.setAttribute('position', new THREE.Float32BufferAttribute(innerP, 3));
+  innerG.setAttribute('color', new THREE.Float32BufferAttribute(innerC, 3));
+  feather.add(new THREE.Mesh(innerG, new THREE.MeshBasicMaterial({
+    vertexColors: true,
+    side: THREE.DoubleSide,
+    toneMapped: false,
+    transparent: true,
+    opacity: .86,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: 2,
+    polygonOffsetUnits: 2
+  })));
+
+  // Tapered rachis: thick at its hollow quill and almost a hair at the tip.
+  const quillP = [], quillN = [], quillIndices = [];
+  for (let i = 0; i <= 100; i++) {
+    const t = i / 100, p = shaft(t), r = .0105 * Math.pow(1 - t, .72) + .0007;
+    for (let j = 0; j < 8; j++) {
+      const a = j * Math.PI / 4;
+      quillP.push(p.x + Math.cos(a) * r, p.y, p.z + Math.sin(a) * r + .004);
+      quillN.push(Math.cos(a), 0, Math.sin(a));
+      if (i < 100) {
+        const a = i * 8 + j, b = i * 8 + (j + 1) % 8;
+        quillIndices.push(a, b, a + 8, b, b + 8, a + 8);
+      }
+    }
+  }
+
+  const quillG = new THREE.BufferGeometry();
+  quillG.setAttribute('position', new THREE.Float32BufferAttribute(quillP, 3));
+  quillG.setAttribute('normal', new THREE.Float32BufferAttribute(quillN, 3));
+  quillG.setIndex(quillIndices);
+  feather.add(new THREE.Mesh(quillG, new THREE.MeshBasicMaterial({ color: 0xdcdcdc, toneMapped: false })));
+
+  // Airy down grows as hundreds of branching filaments, including a few loose edge barbs.
+  const downP = [], downC = [];
+  function filament(path, shade) {
+    let prev = path(0);
+    for (let j = 1; j <= 12; j++) {
+      const p = path(j / 12);
+      downP.push(...prev.toArray(), ...p.toArray());
+      downC.push(shade.r, shade.g, shade.b, shade.r, shade.g, shade.b);
+      prev = p;
+    }
+  }
+
+  for (let i = 0; i < 420; i++) {
+    const t = .09 + Math.pow(fr(), .8) * .28,
+      side = fr() < .5 ? -1 : 1,
+      p = shaft(t),
+      length = .07 + fr() * .23,
+      sweep = .09 + fr() * .22,
+      curl = (fr() - .5) * .18,
+      z = (fr() - .5) * .15;
+    const color = new THREE.Color().setHSL(featherHue, featherSat * .6, .65 + fr() * .22);
+    const path = u => new THREE.Vector3(
+      p.x + side * length * u + curl * u * u,
+      p.y + sweep * u + .045 * Math.sin(u * 4),
+      p.z + z * u + Math.sin(u * Math.PI) * .03
+    );
+    filament(path, color);
+
+    // Every third filament sprouts a few side branches.
+    if (i % 3 === 0) {
+      for (let branch = 0; branch < 3; branch++) {
+        const u = .32 + branch * .17, b = path(u), small = .025 + fr() * .035;
+        filament(v => new THREE.Vector3(b.x + side * small * v, b.y + small * .8 * v, b.z + small * .25 * v), color);
+      }
+    }
+  }
+
+  // Loose barbs that have come away from the vane.
+  for (let i = 0; i < 90; i++) {
+    const t = .25 + fr() * .67,
+      side = fr() < .5 ? -1 : 1,
+      extra = .025 + fr() * .075,
+      shade = new THREE.Color().setHSL(featherHue, featherSat, .65 + fr() * .15);
+    filament(u => {
+      const p = barbPoint(t, side, u);
+      p.x += side * extra * u * u;
+      p.y += extra * u * u;
+      return p;
+    }, shade);
+  }
+
+  const downG = new THREE.BufferGeometry();
+  downG.setAttribute('position', new THREE.Float32BufferAttribute(downP, 3));
+  downG.setAttribute('color', new THREE.Float32BufferAttribute(downC, 3));
+  feather.add(new THREE.LineSegments(downG, new THREE.LineBasicMaterial({
+    vertexColors: true,
+    transparent: true,
+    opacity: .56,
+    toneMapped: false,
+    depthWrite: false
+  })));
+
+  // Every part of the feather shares one wind shader: the free outer edge ripples
+  // most, the shaft barely at all, and a gust briefly amplifies the whole thing.
+  const flutterStrength = { value: 0 };
+  feather.traverse(object => {
+    if (!object.material) return;
+    object.material.onBeforeCompile = s => {
+      s.uniforms.time = uniforms.time;
+      s.uniforms.flutterStrength = flutterStrength;
+      s.uniforms.featherLength = { value: featherLength };
+      s.uniforms.featherCurve = { value: featherCurve };
+      s.uniforms.featherWidth = { value: featherWidth };
+
+      s.vertexShader =
+        'uniform float time;uniform float flutterStrength;uniform float featherLength;uniform float featherCurve;uniform float featherWidth;\n' +
+        s.vertexShader;
+
+      s.vertexShader = s.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+        float along = clamp(position.y / featherLength + .5, 0., 1.);
+        float spine = featherCurve * sin(along * 2.3) + .12 * along * along;
+        float reach = clamp(abs(position.x - spine) / featherWidth, 0., 1.3);
+        float freeEnd = smoothstep(.025, .80, reach);
+        float ripple = sin(time * 2.7 - along * 22. + sign(position.x - spine) * 1.7);
+        float secondary = sin(time * 4.1 - along * 47. + reach * 3.);
+        float breath = .7 + .3 * sin(time * .67);
+        transformed.z += sin(along * 3.9 - time * 1.1) * .10 * along * along;
+        transformed.z += (ripple * .045 + secondary * .017) * freeEnd * breath * (1. + flutterStrength);
+        transformed.y += sin(time * 2.3 - along * 26.) * .026 * freeEnd * (1. + flutterStrength * .6);
+        transformed.x += sin(time * 1.9 - along * 18.) * .018 * freeEnd;
+      `);
+    };
+  });
+
+  // Sunlit pollen, deliberately sparse and slow.
+  const pollenG = new THREE.BufferGeometry(), pp = [];
+  for (let i = 0; i < 120; i++) pp.push((rnd() - .5) * 35, 1 + rnd() * 10, (rnd() - .5) * 35);
+  pollenG.setAttribute('position', new THREE.Float32BufferAttribute(pp, 3));
+
+  const pollen = new THREE.Points(pollenG, new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    uniforms: { time: uniforms.time },
+    vertexShader: `
+      uniform float time;
+      varying float fade;
+      void main() {
+        vec3 p = position;
+        p.x += sin(time * .13 + position.z) * .65;
+        p.y += sin(time * .19 + position.x) * .35;
+        vec4 mv = modelViewMatrix * vec4(p, 1.);
+        gl_Position = projectionMatrix * mv;
+        gl_PointSize = clamp(24. / -mv.z, 1., 4.);
+        fade = .35 + .25 * sin(position.x + time * .3);
+      }
+    `,
+    fragmentShader: `
+      varying float fade;
+      void main() {
+        float a = 1. - smoothstep(.1, .5, length(gl_PointCoord - .5));
+        gl_FragColor = vec4(1., .96, .77, a * fade);
+      }
+    `
+  }));
+  scene.add(pollen);
+
+  // ---------------------------------------------------------------------------
+  // Flight, camera and input
+  // ---------------------------------------------------------------------------
+
+  // Two thermals per 38-second cycle, one strong and one gentle.
+  function updraft(t) {
+    return 1.7 * Math.exp((Math.cos((t - 12) * Math.PI * 2 / 38) - 1) * 3.8)
+      + Math.exp((Math.cos((t - 29) * Math.PI * 2 / 38) - 1) * 5.0);
+  }
+
+  const initialLift = updraft(0);
+  let flightGround = height(0, 0);
+  const follow = new THREE.Vector3(0, flightGround + 4.03 + initialLift, 0);
+
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  let targetYaw = 0, targetPitch = .10, targetDistance = 8.2,
+    yaw = 0, pitch = .10, distance = 8.2,
+    vy = 0, vp = 0, vd = 0,
+    paused = false, elapsed = 0, last = performance.now();
+
+  const pointer = new Map();
+  let prevPinch = 0;
+
+  const gustOffset = new THREE.Vector3(), gustVelocity = new THREE.Vector3();
+  let gustRoll = 0, gustRollVelocity = 0, gustYaw = 0, gustYawVelocity = 0, gustEnergy = 0;
+
+  // A bounded spring lets each puff carry the feather away, then settle gently.
+  function gust(strong = false) {
+    if (paused) return;
+    const sign = Math.random() < .5 ? -1 : 1, amount = strong ? 1.75 : .80;
+
+    const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+
+    gustVelocity.addScaledVector(forward, amount);
+    gustVelocity.y += strong ? 1.8 : .16;
+    if (gustVelocity.length() > 3.1) gustVelocity.setLength(3.1);
+
+    gustRollVelocity = Math.max(-1.2, Math.min(1.2, gustRollVelocity + sign * (strong ? .78 : .34)));
+    gustYawVelocity = Math.max(-1.2, Math.min(1.2, gustYawVelocity + sign * (strong ? .9 : .38)));
+    gustEnergy = Math.min(1.5, gustEnergy + (strong ? 1.1 : .5));
+
+    turnImpulse += sign * (strong ? .065 : .025);
+    turnImpulse = Math.max(-.15, Math.min(.15, turnImpulse));
+
+    canvas.dataset.lastGust = strong ? 'strong' : 'gentle';
+  }
+
+  // Tap for a gentle gust, double tap for a lifting one: the first tap waits
+  // briefly to see whether a second one arrives.
+  let tapTimer = null, lastTap = null, hasTappedOrDoubleTapped = false;
+
+  function cancelTap() {
+    if (tapTimer !== null) clearTimeout(tapTimer);
+    tapTimer = null;
+    lastTap = null;
+  }
+
+  function registerTap(e) {
+    hasTappedOrDoubleTapped = true;
+    const now = performance.now();
+    if (lastTap && now - lastTap.time < 340 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 32) {
+      cancelTap();
+      gust(true);
+    } else {
+      cancelTap();
+      lastTap = { time: now, x: e.clientX, y: e.clientY };
+      tapTimer = setTimeout(() => {
+        gust(false);
+        tapTimer = null;
+        lastTap = null;
+      }, 340);
+    }
+  }
+
+  canvas.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    canvas.setPointerCapture(e.pointerId);
+    pointer.set(e.pointerId, {
+      x: e.clientX, y: e.clientY,
+      startX: e.clientX, startY: e.clientY,
+      time: performance.now(),
+      moved: false,
+      multi: false
+    });
+    if (pointer.size > 1) {
+      cancelTap();
+      for (const p of pointer.values()) p.multi = true;
+    }
+    canvas.classList.add('dragging');
+  });
+
+  canvas.addEventListener('pointermove', e => {
+    if (!pointer.has(e.pointerId)) return;
+    const p = pointer.get(e.pointerId);
+    if (Math.hypot(e.clientX - p.startX, e.clientY - p.startY) > 7) {
+      p.moved = true;
+      cancelTap();
+    }
+
+    // One finger orbits.
+    if (pointer.size === 1 && p.moved && !p.multi) {
+      targetYaw -= (e.clientX - p.x) * .0024;
+      targetPitch += (e.clientY - p.y) * .0017;
+      targetPitch = Math.max(-.18, Math.min(.65, targetPitch));
+    }
+
+    p.x = e.clientX;
+    p.y = e.clientY;
+
+    // Two fingers pinch to zoom.
+    if (pointer.size === 2) {
+      const [a, b] = [...pointer.values()], pinch = Math.hypot(a.x - b.x, a.y - b.y);
+      if (prevPinch) targetDistance = Math.max(3.4, Math.min(12, targetDistance + (prevPinch - pinch) * .013));
+      prevPinch = pinch;
+    }
+  });
+
+  function release(e) {
+    const p = pointer.get(e.pointerId);
+    if (p && e.type === 'pointerup' && !p.moved && !p.multi && performance.now() - p.time < 550) registerTap(e);
+    pointer.delete(e.pointerId);
+    prevPinch = 0;
+    if (!pointer.size) canvas.classList.remove('dragging');
+  }
+
+  canvas.addEventListener('lostpointercapture', release);
+  canvas.addEventListener('pointerup', release);
+  canvas.addEventListener('pointercancel', release);
+
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    cancelTap();
+    const delta = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? innerHeight : 1);
+    targetDistance = Math.max(3.4, Math.min(12, targetDistance + Math.max(-120, Math.min(120, delta)) * .005));
+  }, { passive: false });
+
+  const pause = document.querySelector('#pause');
+
+  function toggle() {
+    cancelTap();
+    paused = !paused;
+    pause.textContent = paused ? 'Resume' : 'Pause';
+    pause.setAttribute('aria-pressed', String(paused));
+  }
+
+  pause.onclick = toggle;
+
+  addEventListener('keydown', e => {
+    if (e.target.tagName === 'BUTTON') return;
+    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' ', '+', '=', '-', '0'].includes(e.key)) e.preventDefault();
+    if (e.key === 'ArrowLeft') targetYaw += .15;
+    if (e.key === 'ArrowRight') targetYaw -= .15;
+    if (e.key === 'ArrowUp') targetPitch = Math.min(.65, targetPitch + .08);
+    if (e.key === 'ArrowDown') targetPitch = Math.max(-.18, targetPitch - .08);
+    if (e.key === '+' || e.key === '=') targetDistance = Math.max(3.4, targetDistance - .5);
+    if (e.key === '-') targetDistance = Math.min(12, targetDistance + .5);
+    if (e.key === '0') {
+      targetYaw = 0;
+      targetPitch = .1;
+      targetDistance = 8.2;
+    }
+    if (e.key.toLowerCase() === 'g') gust(e.shiftKey);
+    if (e.key === ' ') toggle();
+  });
+
+  addEventListener('resize', () => {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+
+  // Coming back to the tab should not count the time we were away as one huge step.
+  document.addEventListener('visibilitychange', () => {
+    last = performance.now();
+  });
+
+  // ---------------------------------------------------------------------------
+  // The frame
+  // ---------------------------------------------------------------------------
+
+  function frame(now) {
+    requestAnimationFrame(frame);
+
+    const dt = Math.min((now - last) / 1000, .035);
+    last = now;
+    if (document.hidden) return;
+    if (!paused) elapsed += dt * (reduced ? .22 : 1);
+
+    // Gust springs relax back towards rest.
+    const step = paused ? 0 : dt * (reduced ? .4 : 1);
+    gustVelocity.addScaledVector(gustOffset, -.48 * step);
+    gustVelocity.multiplyScalar(Math.exp(-1.05 * step));
+    gustOffset.addScaledVector(gustVelocity, step);
+
+    gustRollVelocity += (-.75 * gustRoll - 1.3 * gustRollVelocity) * step;
+    gustRoll += gustRollVelocity * step;
+    gustYawVelocity += (-.65 * gustYaw - 1.2 * gustYawVelocity) * step;
+    gustYaw += gustYawVelocity * step;
+    gustEnergy *= Math.exp(-.65 * step);
+    flutterStrength.value = gustEnergy;
+
+    // Drift onwards, and stream in whatever land that reveals.
+    const t = elapsed,
+      lift = updraft(t),
+      route = advanceJourney(t, paused ? 0 : dt * (reduced ? .22 : 1));
+    travel.set(route.x, route.z);
+    streamWorld(route.x, route.z);
+
+    // The ground under the flight path is followed loosely, not exactly.
+    flightGround += (height(route.x, route.z) - flightGround) * (1 - Math.exp(-dt * .6));
+
+    uniforms.time.value = t;
+
+    feather.position.set(
+      Math.sin(t * .35) * .66 + lift * .15,
+      flightGround + 4.03 + lift + Math.sin(t * .63) * .24,
+      Math.sin(t * .29) * .48
+    );
+    feather.position.add(gustOffset);
+    feather.rotation.set(
+      .16 + Math.sin(t * .53) * .23 + lift * .06,
+      Math.sin(t * .41) * .38 + gustYaw,
+      -.51 + Math.sin(t * .64) * .30 - lift * .10 + gustRoll
+    );
+
+    // The camera chases the feather, and its orbit eases towards the target angles.
+    follow.lerp(feather.position, 1 - Math.exp(-dt * .55));
+
+    vy += (targetYaw - yaw) * 2.4 * dt - vy * 3.2 * dt;
+    vp += (targetPitch - pitch) * 2.4 * dt - vp * 3.2 * dt;
+    vd += (targetDistance - distance) * 2.4 * dt - vd * 3.2 * dt;
+    yaw += vy * dt;
+    pitch += vp * dt;
+    distance += vd * dt;
+
+    camera.position.copy(follow).add(new THREE.Vector3(
+      Math.sin(yaw) * Math.cos(pitch) * distance,
+      Math.sin(pitch) * distance,
+      Math.cos(yaw) * Math.cos(pitch) * distance
+    ));
+
+    // Softly push the camera up out of the hillside rather than clamping it.
+    const floor = height(camera.position.x + route.x, camera.position.z + route.z) + .9;
+    const gap = camera.position.y - floor;
+    camera.position.y = floor + .5 * (gap + Math.sqrt(gap * gap + .16));
+
+    camera.lookAt(follow);
+    sky.position.copy(camera.position);
+    pollen.position.set(0, flightGround, 0);
+    renderer.render(scene, camera);
+  }
+
+  requestAnimationFrame(frame);
+
+  // After a while the words fade out and leave only the meadow.
+  setTimeout(() => document.body.classList.add('settled'), 11000);
+
+  // If 20s pass with no tap or double tap, gently suggest how to stir the air,
+  // then fade the tip away 5s later.
+  setTimeout(() => {
+    if (hasTappedOrDoubleTapped) return;
+    gustTip.classList.add('visible');
+    setTimeout(() => gustTip.classList.remove('visible'), 5000);
+  }, 20000);
+})();
+</script>
+</body>
+</html>
