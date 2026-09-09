@@ -143,6 +143,35 @@ header p {
   opacity: 1;
 }
 
+/* Bottom-left "buy me a coffee" link: mirrors the pause button, but grayscale
+   and hidden until it fades in after the reveal delay set in the script. */
+#coffee {
+  position: fixed;
+  left: 24px;
+  bottom: 20px;
+  font: 16px system-ui, sans-serif;
+  color: #fff9e9;
+  background: rgba(36, 62, 37, .16);
+  border: 1px solid #ffffff33;
+  padding: 7px 15px;
+  border-radius: 25px;
+  text-decoration: none;
+  filter: grayscale(1);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 1s;
+}
+
+#coffee.visible {
+  opacity: .5;
+  pointer-events: auto;
+}
+
+#coffee.visible:hover,
+#coffee.visible:focus-visible {
+  opacity: 1;
+}
+
 #error {
   position: fixed;
   inset: 0;
@@ -201,9 +230,10 @@ header p {
   <p>The wind plays its own music. Bert McCoy</p>
 </div>
 
-<div id="gust-tip" aria-hidden="true">Tap to gust</div>
+<div id="gust-tip" aria-hidden="true">Tap or double tap to gust</div>
 
 <button id="pause" aria-label="Pause or resume the meadow animation" aria-pressed="false">Pause</button>
+<a id="coffee" href="https://buymeacoffee.com/esstec" target="_blank" rel="noopener noreferrer" aria-label="Buy me a coffee" title="Buy me a coffee">☕</a>
 
 <div id="error" hidden>
   <p>This little meadow needs WebGL. Please open this file in a browser with hardware acceleration enabled.</p>
@@ -217,6 +247,7 @@ header p {
   const canvas = document.querySelector('canvas');
   const hint = document.querySelector('#hint');
   const gustTip = document.querySelector('#gust-tip');
+  const coffee = document.querySelector('#coffee');
 
   // ---------------------------------------------------------------------------
   // Renderer, scene, camera and light
@@ -1270,6 +1301,10 @@ header p {
     gustTip.classList.add('visible');
     setTimeout(() => gustTip.classList.remove('visible'), 5000);
   }, 20000);
+
+  // Bottom-left "buy me a coffee" link fades in after a delay (180000 = 3 minutes).
+  const COFFEE_DELAY_MS = 180000;
+  setTimeout(() => coffee.classList.add('visible'), COFFEE_DELAY_MS);
 })();
 </script>
 </body>
