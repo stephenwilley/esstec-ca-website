@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tool Change Efficiencies</title>
+<style>
+:root {
+  --bg:#f7f7f5; --panel:#ffffff; --side:#eef0f3; --text:#1d2228; --muted:#5d6672; --line:#d9dde3;
+  --accent:#2563c9; --accent-soft:#e6efff; --warn:#a96400; --warn-soft:#fff4e0;
+  --ok:#1f7a3a; --ok-soft:#e7f6ec; --code:#f1f3f6; --move:#cfe0f7; --still:#d9822b;
+}
+:root[data-theme="dark"] {
+  --bg:#15171c; --panel:#1b1f27; --side:#111317; --text:#e6e6e6; --muted:#8a93a2; --line:#2c313a;
+  --accent:#5b9ae6; --accent-soft:#1a2639; --warn:#e0a94f; --warn-soft:#2a2215;
+  --ok:#5cc27e; --ok-soft:#162a1d; --code:#222731; --move:#24364f; --still:#d08a3c;
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:15.5px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif; }
+a { color:var(--accent); }
+code { background:var(--code); padding:.08em .35em; border-radius:4px; font-size:.9em; overflow-wrap:anywhere; }
+pre { background:var(--code); border:1px solid var(--line); border-radius:8px; padding:.8rem 1rem; overflow-x:auto; font-size:13px; line-height:1.45; }
+pre code { background:none; padding:0; font-size:inherit; }
+table { border-collapse:collapse; width:100%; margin:.6rem 0 1rem; font-size:14.5px; background:var(--panel); }
+th,td { border:1px solid var(--line); padding:.4rem .6rem; text-align:left; vertical-align:top; }
+th { background:var(--side); font-weight:600; }
+td:first-child code { white-space:nowrap; overflow-wrap:normal; }
+td:first-child { min-width:10rem; }
+td.n, th.n { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+h1,h2,h3 { line-height:1.25; }
+h2 { font-size:1.45rem; margin:0 0 .4rem; }
+h3 { font-size:1.1rem; margin:1.4rem 0 .4rem; }
+main { padding:2rem clamp(1rem,4vw,3rem) 5rem; max-width:980px; margin:0 auto; }
+header.top { display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; margin-bottom:1.2rem; }
+header.top h1 { margin:.1rem 0 .3rem; font-size:2rem; }
+.kicker { color:var(--accent); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; margin:0; }
+.lead { color:var(--muted); margin:0; }
+.theme-btn { padding:.35rem .7rem; border:1px solid var(--line); background:var(--panel); color:var(--text); border-radius:6px; cursor:pointer; font:inherit; font-size:13px; white-space:nowrap; }
+section { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:1.4rem 1.6rem 1.2rem; margin:0 0 1.4rem; }
+.cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:.8rem; margin:1rem 0 0; }
+.card { border:1px solid var(--line); border-radius:10px; padding:.75rem .9rem; background:var(--bg); }
+.card .k { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.05em; }
+.card .v { font-weight:700; font-size:1.35rem; margin-top:.1rem; }
+.card .s { color:var(--muted); font-size:13px; }
+.red { color:#c0392b; }
+:root[data-theme="dark"] .red { color:#ef6b5f; }
+.callout { border:1px solid var(--line); border-left:4px solid var(--accent); background:var(--accent-soft); border-radius:8px; padding:.65rem .95rem; margin:.9rem 0; }
+.callout.warn { border-left-color:var(--warn); background:var(--warn-soft); }
+.callout.ok { border-left-color:var(--ok); background:var(--ok-soft); }
+.callout > b:first-child { display:block; margin-bottom:.2rem; }
+.callout ul { margin:.3rem 0; }
+ol.seq > li { margin-bottom:.25rem; }
+.tl { margin:1rem 0 .4rem; }
+.tl .row { display:grid; grid-template-columns:5.5rem minmax(0,1fr); align-items:center; gap:.6rem; margin:.5rem 0; }
+.tl .lbl { font-size:13px; color:var(--muted); text-align:right; line-height:1.25; }
+.tl .lbl b { color:var(--text); display:block; font-size:14px; }
+.tl .lane { position:relative; height:30px; }
+.tl .track { position:absolute; top:0; bottom:0; left:0; background:var(--move); border-radius:4px; }
+.tl .st { position:absolute; top:0; bottom:0; background:var(--still); border-radius:3px; color:#fff; font-size:11.5px; font-weight:700; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+.tl .axis { position:relative; height:1.2em; color:var(--muted); font-size:12px; margin-left:6.1rem; }
+.tl .axis span { position:absolute; transform:translateX(-50%); white-space:nowrap; }
+.tl .axis span:first-child { transform:none; }
+.key { display:flex; gap:1.2rem; flex-wrap:wrap; font-size:13px; color:var(--muted); margin:.4rem 0 .6rem; }
+.key span::before { content:""; display:inline-block; width:.9em; height:.9em; border-radius:2px; margin-right:.35em; vertical-align:-.1em; background:var(--move); }
+.key span.s::before { background:var(--still); }
+.legend { font-size:14px; }
+.legend li { margin-bottom:.15rem; }
+.two { display:grid; grid-template-columns:1fr 1fr; gap:1.2rem; }
+.muted { color:var(--muted); }
+pre.diff { padding:.5rem 0; font-size:12.5px; }
+pre.diff code { display:block; min-width:max-content; }
+pre.diff span { display:block; padding:0 1rem; white-space:pre; }
+pre.diff .a, .diff-key .a, .stat .a { color:var(--ok); }
+pre.diff .a { background:var(--ok-soft); }
+pre.diff .d, .diff-key .d, .stat .d { color:#b42318; }
+:root[data-theme="dark"] pre.diff .d, :root[data-theme="dark"] .diff-key .d, :root[data-theme="dark"] .stat .d { color:#ef6b5f; }
+pre.diff .d { background:rgba(220,60,50,.10); }
+pre.diff .h { color:var(--accent); background:var(--accent-soft); }
+details.diff { border:1px solid var(--line); border-radius:8px; padding:.5rem .9rem; margin:.8rem 0; background:var(--bg); }
+details.diff > summary { cursor:pointer; }
+details.diff pre { margin:.4rem 0 .3rem; }
+.stat, .diff-key { font-size:13px; font-weight:600; margin-left:.4rem; }
+@media (max-width: 760px) {
+  table { display:block; overflow-x:auto; }
+  .two { grid-template-columns:1fr; }
+  section { padding:1.1rem 1rem; }
+  header.top { flex-direction:column; }
+  .tl .row { grid-template-columns:3.6rem minmax(0,1fr); }
+  .tl .axis { margin-left:4.2rem; }
+}
+@media print { .theme-btn { display:none; } section { break-inside:avoid-page; } }
+</style>
+</head>
+<body>
+<main>
+
+<header class="top">
+  <div>
+    <p class="kicker">Bondtech INDX on Kalico · Voron Trident · tested 2026-11-09</p>
+    <h1>Tool Change Efficiencies</h1>
+    <p class="lead">How a Bondtech INDX tool change went from 10.5 s to 5.8 s. No hardware changes, no firmware flash, and the same safety checks.</p>
+  </div>
+  <button class="theme-btn" id="themeBtn" type="button">Dark mode</button>
+</header>
+
+<section id="summary">
+  <h2>Summary</h2>
+  <div class="callout warn"><b>Use at your own risk</b>These are unofficial changes to Bondtech's macros and Kalico, not anything Bondtech has released or reviewed. They worked on my printer, but that doesn't mean they'll work on yours, and they could damage it. If you use anything from this page, you do so at your own risk.</div>
+  <p>Most of a tool change was spent standing still. The motion itself was quick, but the macros stopped the toolhead about twenty times per change, and every stop costs a fixed restart delay in Klipper. Bondtech's macros stop the head around each step, which keeps every step easy to reason about and safe. Some of those stops are needed. Many look avoidable: they wait for moves that run in order anyway, or pause in a way that doesn't appear to delay what they were placed for. There may be reasons for some of them that aren't visible from the code. Removing those stops, and letting the latch moves queue behind the head moves instead of stopping around each one, cut the time per change by 45%.</p>
+  <div class="cards">
+    <div class="card"><div class="k">Per tool change</div><div class="v">10.5 → 5.8 s</div><div class="s">cold, average of 40</div></div>
+    <div class="card"><div class="k">Head standing still</div><div class="v">7.0 → 3.0 s</div><div class="s">per change</div></div>
+    <div class="card"><div class="k">On a 376-change print</div><div class="v">≈ 29 min saved</div><div class="s">a four-colour painted Benchy</div></div>
+    <div class="card"><div class="k">Reliability</div><div class="v">208 / 209<span class="red">*</span></div><div class="s">one pickup miss, retried; <span class="red">none in 129 since a 100 ms pause was added</span></div></div>
+  </div>
+</section>
+
+<section id="background">
+  <h2>How an INDX tool change works</h2>
+  <p>Two parts of the INDX head matter here:</p>
+  <ul>
+    <li><b>The latch</b> that holds the tool is driven by the stepper configured as the head's <code>extruder</code>, so it moves with extruder moves in millimetres. Kalico's INDX module provides <code>INDX_EXTRUDER_MOVE</code> for this: an extruder move that bypasses the cold-extrusion check and runs at a motor current the macro chooses. The rest of the park and pickup is Bondtech's G-code macros. Every change in this write-up is in one of those two places.</li>
+    <li><b>The load cell</b> checks every change. A seated tool presses on it with the latch's preload, more than 1000 g, so a proper pickup adds that to the reading and a proper park takes it away.</li>
+  </ul>
+  <h3>Bondtech's park and pickup</h3>
+  <p>A change is a <b>park</b> of the current tool followed by a <b>pickup</b> of the next one. The <b>trigger line</b> is a point 5 mm in front of the docks where the head lines up before going in.</p>
+  <div class="two">
+    <div>
+      <b>Park</b>
+      <ol class="seq">
+        <li>Lift Z 1 mm, turn the heater off.</li>
+        <li>Drive to the trigger line in front of the tool's dock.</li>
+        <li>Weigh the head with the tool on it (the "seated" reading).</li>
+        <li>Unlock "dance": nudge the latch, step 0.5–1 mm into the dock, nudge again, then drive fully in and open the latch.</li>
+        <li>Back out and weigh again. The reading must have changed by at least 425 g, or the tool is still on the head and INDX stops.</li>
+      </ol>
+    </div>
+    <div>
+      <b>Pickup</b>
+      <ol class="seq">
+        <li>Drive to the trigger line in front of the new tool's dock.</li>
+        <li>Weigh the empty head.</li>
+        <li>Drive into the dock (the latch is already open from the last park).</li>
+        <li>Close the latch.</li>
+        <li>Back out, let the load cell settle, weigh again. It must differ from the empty head by at least 680 g, or INDX re-homes and retries once.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<section id="why">
+  <h2>Why stops cost so much</h2>
+  <p>Klipper plans moves ahead. While the head is moving, the next few moves are already in a queue, so one move flows into the next without stopping. Two things break that flow:</p>
+  <ul>
+    <li><b>Waiting for the queue to empty.</b> <code>M400</code> in a macro, or <code>wait_moves()</code> in Python, holds up the next command until every queued move has finished. The head comes to a full stop. The next move can't start straight away either: Klipper schedules it at least 0.25 s in the future (<code>BUFFER_TIME_START</code>) so the host can stay ahead of the motors. That is about a quarter of a second of dead time per stop, plus any decelerating and accelerating the stop forces.</li>
+    <li><b>Changing a motor driver's current.</b> Writing a new current to the stepper driver is a query to the microcontroller that only returns once the microcontroller's clock reaches the requested time. The host can't plan past it, so the queue drains around it.</li>
+  </ul>
+  <div class="callout warn">
+    <b>A trap: <code>G4</code> doesn't delay the next command, only the next move</b>
+    <code>G4 P250</code> inserts a 250 ms pause into the <em>motion</em> timeline and returns immediately. A macro that runs <code>M400</code>, then <code>G4 P250</code> to let a sensor settle, then reads the sensor, takes the reading <em>before</em> the pause: it runs as soon as the <code>G4</code> has been queued. The pause then only holds up the moves after the reading. Three of the four settle pauses in the original tool change are placed like this. They appear to have added 250 ms of standing still without delaying the reading they were there for.
+  </div>
+</section>
+
+<section id="measure">
+  <h2>How it was measured</h2>
+  <p>A small Python script on the printer's host sends each tool change through Moonraker (Klipper's web API). Meanwhile it samples the toolhead's live position and velocity about four times a second, and logs when each command starts and finishes. Every test is a loop through docks T0 → T1 → T2 → T3 → T0, with the hotend cold (<code>TEMP=0</code>) so heating doesn't blur the timing, followed by <code>M400</code> so the time covers the whole change. "Still" is any stretch where neither the head nor the latch is moving.</p>
+  <p class="muted">At 4 samples a second, every still period below is good to about ±0.25 s. The totals are exact, because they come from the command timestamps.</p>
+
+  <h3>Where the time went: one change, T1 → T2</h3>
+  <div class="key"><span>moving</span><span class="s">standing still</span></div>
+  <div class="tl">
+    <div class="row"><div class="lbl"><b>Before</b>10.34 s</div>
+      <div class="lane">
+        <div class="track" style="width:98.5%"></div>
+        <div class="st" style="left:0.6%;width:4.8%">1</div>
+        <div class="st" style="left:7.7%;width:16.8%">2</div>
+        <div class="st" style="left:26.9%;width:7.1%">3</div>
+        <div class="st" style="left:36.4%;width:2.4%"></div>
+        <div class="st" style="left:43.5%;width:7.1%">4</div>
+        <div class="st" style="left:53.1%;width:7.1%">5</div>
+        <div class="st" style="left:65.0%;width:7.1%">6</div>
+        <div class="st" style="left:77.0%;width:2.5%"></div>
+        <div class="st" style="left:84.2%;width:11.9%">7</div>
+      </div></div>
+    <div class="row"><div class="lbl"><b>After</b>5.72 s</div>
+      <div class="lane">
+        <div class="track" style="width:54.5%"></div>
+        <div class="st" style="left:4.5%;width:14.3%">A</div>
+        <div class="st" style="left:26.0%;width:4.8%">B</div>
+        <div class="st" style="left:33.1%;width:2.5%">C</div>
+        <div class="st" style="left:45.1%;width:7.1%">D</div>
+      </div></div>
+    <div class="axis"><span style="left:0%">0 s</span><span style="left:23.8%">2.5</span><span style="left:47.6%">5</span><span style="left:71.4%">7.5</span><span style="left:95.2%">10 s</span></div>
+  </div>
+  <div class="two legend">
+    <div><b>Before: 7.0 s still</b>
+      <ol>
+        <li>Stop after the Z lift to turn the heater off</li>
+        <li>Trigger line: seated reading, a 250 ms dwell, then the low-current latch squeeze with a stop either side</li>
+        <li>Dance steps: a stop before and after each latch nudge</li>
+        <li>Latch fully opening in the dock</li>
+        <li>Park check reading after backing out</li>
+        <li>Pickup trigger line: empty-head reading and a 250 ms dwell</li>
+        <li>Load cell settle (300 ms) and the seat check after the pickup</li>
+      </ol>
+      <p class="muted">Unnumbered slivers are short stops around a latch move.</p>
+    </div>
+    <div><b>After: 3.0 s still</b>
+      <ol type="A">
+        <li>Trigger line: one stop for the seated reading and heater off, then the squeeze (still a stop, see below)</li>
+        <li>Park check reading</li>
+        <li>Empty-head reading</li>
+        <li>Settle (150 ms) and the seat check</li>
+      </ol>
+      <p class="muted">Every load cell check is still there. Only the stops that didn't appear to protect anything are gone.</p>
+    </div>
+  </div>
+</section>
+
+<section id="changes">
+  <h2>The changes</h2>
+  <h3>1. Let latch moves queue (Kalico, Python)</h3>
+  <p><code>INDX_EXTRUDER_MOVE</code> called <code>wait_moves()</code> both before and after every latch move. It also wrote the motor current before and after each one, even when the current wasn't changing. That is a sensible, safe default for a latch move made on its own. Inside a tool change, though, it surrounded every latch move with up to four stops.</p>
+  <p>A new <code>WAIT=0</code> option queues the latch move straight behind the head moves before it, like any other move. Klipper already runs an extruder-only move after a head move in order, so the latch still moves only once the head has arrived. The current is now written only when a move asks for clearly less than the run current. That applies only to the squeeze, which deliberately runs the latch motor at 0.2 A instead of 0.6 A so that it gives way while the tool is pushed into the dock. The squeeze keeps its stops, because a current change can't be queued.</p>
+<pre><code>wait = gcmd.get_int("WAIT", 1, minval=0, maxval=1)
+...
+lower = current &lt; run_current * 0.95   # the readback is quantised, so "equal" isn't exact
+...
+if wait:
+    toolhead.wait_moves()
+if lower:
+    current_helper.set_current(current, hold, toolhead.get_last_move_time())
+try:
+    toolhead.manual_move(pos, speed)       # the latch move, cold extrusion allowed
+    if wait:
+        toolhead.wait_moves()
+finally:
+    if lower:
+        current_helper.set_current(run_current, hold, toolhead.get_last_move_time())</code></pre>
+  <p>Without <code>WAIT=0</code> the command behaves exactly as before, so Bondtech's macros are unaffected.</p>
+  <div class="callout warn"><b>Deploying a Python change needs a full service restart</b>The Klipper console commands <code>RESTART</code> and <code>FIRMWARE_RESTART</code> reload the config, but Python modules that are already loaded stay loaded. The first round of tests silently ran the old code, and <code>WAIT=0</code> appeared to do nothing. Restart the Klipper service itself, for example with <code>systemctl restart klipper</code>.</div>
+
+  <h3>2. Take out stops that don't appear to be needed (macros)</h3>
+  <p>In the park and pickup macros:</p>
+  <ul>
+    <li>The heater-off shares the stop at the trigger line instead of having its own stop after the Z lift. The heater therefore stays on about a second longer, through the travel to the dock (see the note on ooze below).</li>
+    <li>The 250 ms <code>G4</code> pauses after the park and empty-head readings go. As explained above, they don't appear to delay the readings.</li>
+    <li>The <code>M400</code> between the Z lift and the travel, and between backing out and lowering Z, go. Those moves run in order anyway. The stop before the heater turns back on stays.</li>
+  </ul>
+  <div class="callout"><b>Ooze, and where to put the prime tower</b>With the heater-off moved to the trigger line, the nozzle stays hot for about a second longer on the way to the dock, so a parked tool can ooze slightly more. A prime tower placed between the docks and the printed object takes care of this: after every pickup the head passes the tower on its way back and primes there before printing resumes, which clears any ooze before it reaches the part. That placement also shortens the travel to and from the docks, so it is worth doing anyway. Turning the heater off earlier, right after the Z lift as Bondtech's code does, would need its own stop to wait for the last print moves to finish, so that variant wasn't tested.</div>
+  <p>Every load cell check reads exactly what it read before. The seated readings on the first runs matched the baseline within a few grams.</p>
+
+  <h3>3. Tune the speeds and pauses</h3>
+  <p>The open and lock now run at 2400 mm/min. That is a constant in <code>_INDX_CONSTANTS</code>, which INDX's calibration macros also use for their latch moves.</p>
+  <table>
+    <tr><th>Change</th><th>Bondtech</th><th>Now</th><th>Why</th></tr>
+    <tr><td>Latch open and lock speed</td><td class="n">1500 mm/min</td><td class="n">2400 mm/min</td><td>Each is an 11 mm move. 2400 is close to what Prusa's INDX firmware uses.</td></tr>
+    <tr><td>Load cell settle before the pickup seat check</td><td class="n">300 ms</td><td class="n">150 ms</td><td>This pause does delay the reading: it comes after an <code>M400</code>, and it is followed by another <code>M400</code> before the reading. The load cell value is a 0.5 s rolling average, so the reading still covers the head standing still.</td></tr>
+    <tr><td>Pause before the latch locks on a pickup</td><td class="n">—</td><td class="n">100 ms</td><td>New. Gives the tool a moment in the dock before the latch closes. See <a href="#reliability">Reliability</a>.</td></tr>
+  </table>
+  <p>During testing, each change was a switch that could be turned on live with <code>SET_GCODE_VARIABLE</code>, so they could be A/B tested one at a time. Once the results were in, the switches came out and the winning behaviour went straight into the macros, which keeps the diff small. The results below are named after the change each step added.</p>
+</section>
+
+<section id="results">
+  <h2>Results</h2>
+  <p>Average time per change over a T0 → T1 → T2 → T3 → T0 loop, cold. Each row adds to the row above.</p>
+  <table>
+    <tr><th>Step</th><th class="n">Per change</th><th class="n">Saved</th></tr>
+    <tr><td>Bondtech's tool change</td><td class="n">10.50 s</td><td class="n">—</td></tr>
+    <tr><td>+ avoidable stops removed</td><td class="n">8.72 s</td><td class="n">1.78 s</td></tr>
+    <tr><td>+ latch moves queued (<code>WAIT=0</code>)</td><td class="n">6.29 s</td><td class="n">2.43 s</td></tr>
+    <tr><td>+ latch at 2400 mm/min</td><td class="n">6.03 s</td><td class="n">0.26 s</td></tr>
+    <tr><td>+ 150 ms seat settle</td><td class="n">5.88 s</td><td class="n">0.15 s</td></tr>
+    <tr><td>+ 100 ms pause before the lock (all 8 docks, 40 changes)</td><td class="n">5.81 s</td><td class="n">+0.0 s</td></tr>
+  </table>
+  <p>The 100 ms lock pause costs almost nothing: most of it overlaps time the planner had to spend anyway.</p>
+  <p>For a sense of scale: the painted Benchy that started this has 376 tool changes. About 4.7 s saved per change is about <b>29 minutes</b> off a 3 h 25 min print. A hot change mid-print also waits for the next nozzle to reach temperature, which is a separate cost and not covered here.</p>
+
+  <h3>In a real print</h3>
+  <p>A two-colour PLA print with 73 tool changes ran with every change clean. Six of them were timed from the last extrusion before the change to the first extrusion after it, on the prime tower: <b>11.3–15.6 s, 13.4 s on average</b>. About 8 s of that is motion: the cold test's 5.8 s plus the trips to and from the prime tower. The rest, 3.5–7.5 s, is the incoming nozzle heating back to temperature. A docked nozzle cools, and its heater is in the head, so nothing can keep it warm in the dock. A tool used 30 s earlier came back at 127–146 °C and took about 4 s; one idle for two minutes was down to 76–83 °C and took about 6.5 s. The nozzle heats at about 20 °C/s, and the macro resumes at 5 °C under the target.</p>
+  <p>Starting the heater earlier, as soon as the latch locks, would overlap 1–1.5 s of that, but it would mean heating before the seat check has confirmed a tool is there. The head reads nozzle temperature with an infrared sensor aimed where the nozzle should be, and a badly seated tool could read low and be driven hard. That was judged not worth the risk.</p>
+
+  <h3 id="reliability">Reliability</h3>
+  <p>Every change made with the new code, cold tests and the print together:</p>
+  <table>
+    <tr><th>Run</th><th class="n">Changes</th><th class="n">Average</th><th>Failures</th></tr>
+    <tr><td>Short timing loops while tuning, four changes each</td><td class="n">36</td><td class="n">—</td><td>none</td></tr>
+    <tr><td>All eight docks, five times, without the lock pause</td><td class="n">40</td><td class="n">5.77 s</td><td>none</td></tr>
+    <tr><td>A short check loop after a service restart, still without it</td><td class="n">4</td><td class="n">—</td><td>1 pickup (T3)</td></tr>
+    <tr><td>All eight docks, five times, with the 100 ms lock pause</td><td class="n">40</td><td class="n">5.81 s</td><td>none</td></tr>
+    <tr><td>Two-colour print</td><td class="n">73</td><td class="n">13.4 s, hot</td><td>none</td></tr>
+    <tr><td>All eight docks once, final code, twice with a restart between</td><td class="n">16</td><td class="n">5.85 s</td><td>none</td></tr>
+  </table>
+  <p><b>The miss.</b> On one pickup the latch closed, but the tool stayed in its dock. The seat check saw an empty head (−172 g), INDX re-homed X and Y as designed, and the retry picked the tool up. The toolhead trace looked like any other pickup. The difference from Bondtech's code is timing: with the latch moves queued, the lock starts the instant the head arrives in the dock, while the original code stopped there for about 0.3 s first. A 100 ms pause before the lock restores some of that settling time, and nothing has missed in 129 changes since. One miss can't prove the pause fixed it, but the pause costs almost nothing, so it stays.</p>
+</section>
+
+<section id="dropped">
+  <h2>What didn't help</h2>
+  <h3>Prusa's "direct" park order: slower here</h3>
+  <p>Prusa's own INDX firmware (<code>toolchanger_indx.cpp</code> in Prusa-Firmware-Buddy) parks by driving straight into the dock at 100 mm/s, wiggling the latch ±0.27 mm, then opening it. Bondtech's macros step into the dock in 0.5–1 mm increments with a latch nudge at each step. We tested a "direct" option which copied Prusa's order, with Bondtech's latch distances.</p>
+  <p>It took <b>7.08 s</b> against 6.03 s for the dance, so it isn't in the final code. In the direct order both the squeeze and the wiggle run at the reduced 0.2 A, and every current change forces a full stop. The dance has only one low-current move. Prusa's firmware runs on its own microcontroller and doesn't pay Klipper's queue-restart cost, so the same order is cheap there.</p>
+  <h3>A shorter load cell settle: no gain</h3>
+  <p>Cutting the seat settle from 150 to 100 ms measured 5.83 s against 5.88 s, which is inside the noise. 150 ms keeps more margin for the reading.</p>
+</section>
+
+<section id="left">
+  <h2>What's left, and why it stays</h2>
+  <ul>
+    <li><b>The stop at the trigger line, about 1.5 s.</b> The head has to stand still for the seated reading, because that reading is what lets the park check prove the tool came off. Then the squeeze changes the latch motor's current, which can't be queued, so there is a stop before and after it. Removing this would mean dropping the came-off check, or squeezing at full current, which changes how Bondtech loads the latch.</li>
+    <li><b>The seat check after the pickup, about 0.75 s.</b> This proves the new tool is on before the heater comes on and printing resumes.</li>
+    <li><b>Smaller ones.</b> The park check reading and the empty-head reading are short stops, and both are the reason the checks work.</li>
+  </ul>
+  <p>Going further would need firmware-side work: for example, letting the head's microcontroller do the current change on a schedule, or detecting the nozzle with a sensor instead of weighing it, as Prusa does.</p>
+</section>
+
+<section id="lessons">
+  <h2>Lessons that apply beyond INDX</h2>
+  <ul>
+    <li><b>Measure stillness, not just total time.</b> Sampling position and velocity through Moonraker at a few hertz was enough to show that two-thirds of the change was the head standing still.</li>
+    <li><b>Every <code>M400</code> or <code>wait_moves()</code> costs about 0.25 s</b> on top of the wait itself. In a macro that runs hundreds of times per print, it is worth asking what each one protects.</li>
+    <li><b><code>G4</code> pauses motion, not the macro.</b> A <code>G4</code> placed to let a sensor settle doesn't delay the reading unless an <code>M400</code> follows it.</li>
+    <li><b>A Python change needs the Klipper service restarted</b>, not just <code>RESTART</code>.</li>
+    <li><b>Simulation catches mistakes, not stalls.</b> Kalico's batch mode (running <code>klippy.py</code> against a file instead of a printer) confirmed that every variant produced valid commands. It predicted 4.56 → 3.32 s of planned motion, but it doesn't model the queue drains, which were most of the real cost.</li>
+  </ul>
+</section>
+
+<section id="code">
+  <h2>The code changes</h2>
+  <p>Complete diffs. Kalico's are against commit <code>488b45d5</code> (branch <code>indx-fast-latch</code>); INDX's are against BondtechAB/INDX <code>ae64179</code> (branch <code>fast-park</code>). <span class="diff-key"><span class="a">added</span> <span class="d">removed</span></span></p>
+  <details class="diff" open>
+    <summary><b>Kalico</b> · <code>klippy/extras/indx/heater.py</code> <span class="stat"><span class="a">+25</span> <span class="d">−8</span></span></summary>
+    <p class="muted">The <code>WAIT</code> option and the current-change test.</p>
+<pre class="diff"><code><span class="h">@@ -1428,6 +1428,12 @@ class IndxToolboardHeater:</span><span class="c">         distance = gcmd.get_float(&quot;DISTANCE&quot;)</span><span class="c">         speed = gcmd.get_float(&quot;SPEED&quot;, above=0.0)</span><span class="c">         current = gcmd.get_float(&quot;CURRENT&quot;, above=0.0)</span><span class="a">+        # WAIT=0 queues the move behind the moves already queued instead of</span><span class="a">+        # waiting for the toolhead to stop before and after it. A stop costs</span><span class="a">+        # the move queue&#x27;s restart delay (BUFFER_TIME_START) on top of the</span><span class="a">+        # wait itself. A lowered current still waits: the TMC register write</span><span class="a">+        # is a query that returns only once the MCU reaches its print time.</span><span class="a">+        wait = gcmd.get_int(&quot;WAIT&quot;, 1, minval=0, maxval=1)</span><span class="c"> </span><span class="c">         toolhead = self.toolboard.printer.lookup_object(&quot;toolhead&quot;)</span><span class="c">         extruder = toolhead.get_extruder()</span><span class="h">@@ -1445,14 +1451,23 @@ class IndxToolboardHeater:</span><span class="c">         run_current, hold_current, req_hold_current, *_ = (</span><span class="c">             current_helper.get_current()</span><span class="c">         )</span><span class="a">+        # get_current() reads back the register value, which is quantised and</span><span class="a">+        # can land a little either side of the configured run current, so</span><span class="a">+        # asking for the run current again would still write the register.</span><span class="a">+        # Only touch the current when the move asks for clearly less.</span><span class="a">+        lower = current &lt; run_current * 0.95</span><span class="c">         current = min(current, run_current)</span><span class="c">         restore_hold_current = (</span><span class="c">             req_hold_current if req_hold_current is not None else hold_current</span><span class="c">         )</span><span class="c"> </span><span class="d">-        toolhead.wait_moves()</span><span class="d">-        print_time = toolhead.get_last_move_time()</span><span class="d">-        current_helper.set_current(current, restore_hold_current, print_time)</span><span class="a">+        if wait:</span><span class="a">+            toolhead.wait_moves()</span><span class="a">+        if lower:</span><span class="a">+            print_time = toolhead.get_last_move_time()</span><span class="a">+            current_helper.set_current(</span><span class="a">+                current, restore_hold_current, print_time</span><span class="a">+            )</span><span class="c">         try:</span><span class="c">             pos = toolhead.get_position()</span><span class="c">             pos[3] += distance</span><span class="h">@@ -1462,12 +1477,14 @@ class IndxToolboardHeater:</span><span class="c">                 toolhead.manual_move(pos, speed)</span><span class="c">             finally:</span><span class="c">                 self.heater.can_extrude = can_extrude</span><span class="d">-            toolhead.wait_moves()</span><span class="a">+            if wait:</span><span class="a">+                toolhead.wait_moves()</span><span class="c">         finally:</span><span class="d">-            print_time = toolhead.get_last_move_time()</span><span class="d">-            current_helper.set_current(</span><span class="d">-                run_current, restore_hold_current, print_time</span><span class="d">-            )</span><span class="a">+            if lower:</span><span class="a">+                print_time = toolhead.get_last_move_time()</span><span class="a">+                current_helper.set_current(</span><span class="a">+                    run_current, restore_hold_current, print_time</span><span class="a">+                )</span><span class="c"> </span><span class="c">     def cmd_SET_MODEL_PARAMS(self, gcmd):</span><span class="c">         cur = self.thermal_model.params</span></code></pre>
+  </details>
+  <details class="diff">
+    <summary><b>Kalico</b> · <code>docs/G-Codes.md</code> <span class="stat"><span class="a">+8</span> <span class="d">−2</span></span></summary>
+    <p class="muted">Command reference for <code>WAIT</code>.</p>
+<pre class="diff"><code><span class="h">@@ -1089,12 +1089,18 @@ default) the measured values are applied and staged for SAVE_CONFIG.</span><span class="c"> (no filament compensation). Run SAVE_CONFIG to persist.</span><span class="c"> </span><span class="c"> #### INDX_EXTRUDER_MOVE</span><span class="d">-`INDX_EXTRUDER_MOVE DISTANCE=&lt;mm&gt; SPEED=&lt;mm/s&gt; CURRENT=&lt;amps&gt;`:</span><span class="a">+`INDX_EXTRUDER_MOVE DISTANCE=&lt;mm&gt; SPEED=&lt;mm/s&gt; CURRENT=&lt;amps&gt;</span><span class="a">+[WAIT=&lt;0|1&gt;]`:</span><span class="c"> Perform an extruder move that bypasses the cold extrude check, with</span><span class="c"> the TMC run current temporarily lowered to CURRENT (think of it as</span><span class="c"> M302 plus a move in a single command). Mainly intended for loading</span><span class="c"> and unloading INDX tools without needing to set a low minimum</span><span class="d">-extrusion temperature.</span><span class="a">+extrusion temperature. By default (WAIT=1) the command waits for the</span><span class="a">+toolhead to stop before and after the move. With WAIT=0 the move is</span><span class="a">+queued behind the moves already queued, so a sequence of toolhead and</span><span class="a">+extruder moves runs without stopping between them; it still runs</span><span class="a">+after them, never alongside. A CURRENT below the run current still</span><span class="a">+waits, because the current change has to take effect at the move.</span><span class="c"> </span><span class="c"> #### INDX_SET_MODEL_PARAMS</span><span class="c"> `INDX_SET_MODEL_PARAMS [MAX_POWER=&lt;value&gt;]</span></code></pre>
+  </details>
+  <details class="diff" open>
+    <summary><b>INDX</b> · <code>macros/indx-tc-macros.cfg</code> <span class="stat"><span class="a">+38</span> <span class="d">−32</span></span></summary>
+    <p class="muted">The park and pickup macros: the stops removed, latch moves queued, the latch speed, the lock pause and the shorter settle.</p>
+<pre class="diff"><code><span class="h">@@ -36,7 +36,7 @@ variable_full_lock_e: 11.0</span><span class="c"> variable_squeeze_feedrate: 2000</span><span class="c"> variable_wiggle_feedrate: 2500</span><span class="c"> variable_dock_feedrate: 3000</span><span class="d">-variable_latch_feedrate: 1500</span><span class="a">+variable_latch_feedrate: 2400</span><span class="c"> variable_peel_feedrate: 3000</span><span class="c"> variable_engage_feedrate: 2500</span><span class="c"> </span><span class="h">@@ -309,15 +309,19 @@ gcode:</span><span class="c">     {% endif %}</span><span class="c"> </span><span class="c"> [gcode_macro _TC_LATCH_MOVE]</span><span class="d">-description: Inner — cold-capable latch move via INDX_EXTRUDER_MOVE. E=distance mm, F=feedrate mm/min, I=current amps (default run_current). Bypasses min_extrude_temp so tool changes run without heating the tool.</span><span class="a">+description: Inner — cold-capable latch move via INDX_EXTRUDER_MOVE. E=distance mm, F=feedrate mm/min, I=current amps (default run_current), W=0 to queue it without stopping. Bypasses min_extrude_temp so tool changes run without heating the tool.</span><span class="c"> gcode:</span><span class="c">     {% set e = params.E|float %}</span><span class="c">     {% set f = params.F|default(1500)|float %}</span><span class="c">     {% set i = params.I|default(printer[&quot;gcode_macro _INDX_CONSTANTS&quot;].run_current)|float %}</span><span class="a">+    {% set w = params.W|default(1)|int %}</span><span class="c">     # INDX_EXTRUDER_MOVE drives the extruder stepper directly with the</span><span class="c">     # min_extrude_temp check bypassed, and sets/restores TMC current around the</span><span class="c">     # move. SPEED is in mm/s; the INDX constants use mm/min feedrates.</span><span class="d">-    INDX_EXTRUDER_MOVE DISTANCE={e} SPEED={f / 60.0} CURRENT={i}</span><span class="a">+    # By default it waits for the toolhead to stop before and after the move.</span><span class="a">+    # W=0 queues the move behind the ones already queued instead (Kalico&#x27;s</span><span class="a">+    # WAIT=0); a move at reduced current still waits for the current change.</span><span class="a">+    INDX_EXTRUDER_MOVE DISTANCE={e} SPEED={f / 60.0} CURRENT={i}{&quot; WAIT=0&quot; if not w else &quot;&quot;}</span><span class="c"> </span><span class="c"> [gcode_macro _SET_MODE]</span><span class="c"> gcode:</span><span class="h">@@ -390,11 +394,11 @@ gcode:</span><span class="c">     # 2. High-speed sprint to the clearance line (absolute move), then drop Z.</span><span class="c">     #    These are deliberately separate moves. Combining them descends Z while</span><span class="c">     #    XY is still travelling back toward the print area, which drags the</span><span class="d">-    #    nozzle across the part.</span><span class="a">+    #    nozzle across the part. Queued moves run one after the other, so Z</span><span class="a">+    #    only starts once Y has reached the clearance line.</span><span class="c">     G90</span><span class="c">     _TC_G0 Y={&quot;%.3f&quot;|format(clearance_y)}</span><span class="c">     {% if restore_z &gt; 0 %}</span><span class="d">-        M400</span><span class="c">         _TC_G0 Z={restore_z}</span><span class="c">     {% endif %}</span><span class="c"> </span><span class="h">@@ -411,9 +415,11 @@ gcode:</span><span class="c">     {% set trigger_y = dock_y - tp.dock_dir * tp.trigger_offset %}</span><span class="c"> </span><span class="c">     # Latch (E) moves run through INDX_EXTRUDER_MOVE so they work cold, with no</span><span class="d">-    # need to heat the tool. INDX_EXTRUDER_MOVE is E-only and waits for motion</span><span class="d">-    # before/after, so each latch nudge is done first, then the paired Y</span><span class="d">-    # approach move.</span><span class="a">+    # need to heat the tool. Each latch nudge runs first, then the paired Y</span><span class="a">+    # approach move. W=0 queues the run-current nudges behind the Y moves</span><span class="a">+    # instead of stopping around each one; an E-only move after a Y move still</span><span class="a">+    # starts only once the Y move has finished. The squeeze runs at reduced</span><span class="a">+    # current, so it still stops for the current change.</span><span class="c">     _TC_SET_ROTATION_DIST</span><span class="c">     G90</span><span class="c"> </span><span class="h">@@ -422,15 +428,14 @@ gcode:</span><span class="c">     G1 Y{&quot;%.3f&quot;|format(trigger_y + tp.dock_dir * c.squeeze_depth)} F{c.squeeze_feedrate}</span><span class="c"> </span><span class="c">     # 2. Wiggle In → Wiggle Out → Dock (latch nudge first, then Y approach)</span><span class="d">-    _TC_LATCH_MOVE E={c.wiggle_in_e} F={c.squeeze_feedrate} I={c.run_current}</span><span class="a">+    _TC_LATCH_MOVE E={c.wiggle_in_e} F={c.squeeze_feedrate} I={c.run_current} W=0</span><span class="c">     G1 Y{&quot;%.3f&quot;|format(trigger_y + tp.dock_dir * c.wiggle_in_depth)} F{c.squeeze_feedrate}</span><span class="d">-    _TC_LATCH_MOVE E={c.wiggle_out_e} F={c.wiggle_feedrate} I={c.run_current}</span><span class="a">+    _TC_LATCH_MOVE E={c.wiggle_out_e} F={c.wiggle_feedrate} I={c.run_current} W=0</span><span class="c">     G1 Y{&quot;%.3f&quot;|format(trigger_y + tp.dock_dir * c.wiggle_out_depth)} F{c.wiggle_feedrate}</span><span class="c">     G1 Y{&quot;%.3f&quot;|format(dock_y)} F{c.dock_feedrate}</span><span class="c"> </span><span class="d">-    # 3. Final stationary open</span><span class="d">-    M400</span><span class="d">-    _TC_LATCH_MOVE E={c.full_open_e} F={c.latch_feedrate} I={c.run_current}</span><span class="a">+    # 3. Final open, once the Y move into the dock has finished</span><span class="a">+    _TC_LATCH_MOVE E={c.full_open_e} F={c.latch_feedrate} I={c.run_current} W=0</span><span class="c">     _TC_RESTORE_ROTATION_DIST</span><span class="c"> </span><span class="c"> #####################################################################</span><span class="h">@@ -631,20 +636,20 @@ gcode:</span><span class="c">         {% if zhop &gt; 0 %}</span><span class="c">             _TC_G0 Z={&quot;%.3f&quot;|format(hop_z)}</span><span class="c">         {% endif %}</span><span class="d">-        # SAFETY: heater off before any dock approach. M400 first: it waits</span><span class="d">-        # for the print moves still queued (and the hop), so the heat is not</span><span class="d">-        # cut while the nozzle is still extruding. The nozzle is raised and</span><span class="d">-        # standing still at this point (PR #39).</span><span class="d">-        M400</span><span class="d">-        M104 S0</span><span class="c">         _TC_G0 X={tool.x} Y={&quot;%.3f&quot;|format(clearance_y)}</span><span class="c"> </span><span class="c">         # High-speed sprint to trigger line</span><span class="c">         _TC_G0 Y={&quot;%.3f&quot;|format(trigger_y)}</span><span class="a">+</span><span class="a">+        # SAFETY: heater off before the dock approach. M400 first: it waits</span><span class="a">+        # for the print moves still queued, so the heat is not cut while the</span><span class="a">+        # nozzle is still extruding. The same stop serves the load cell reading.</span><span class="a">+        M400</span><span class="a">+        M104 S0</span><span class="c">         {% if check %}</span><span class="d">-            # Load cell with the tool still seated, for the park check below</span><span class="d">-            M400</span><span class="d">-            G4 P250</span><span class="a">+            # Load cell with the tool still seated, for the park check below.</span><span class="a">+            # The reading is the load cell&#x27;s 0.5 s average, taken as soon as the</span><span class="a">+            # M400 returns.</span><span class="c">             _INDX_LC_STORE VAR=seated</span><span class="c">         {% endif %}</span><span class="c">         </span><span class="h">@@ -656,13 +661,11 @@ gcode:</span><span class="c">             G1 Y{&quot;%.3f&quot;|format(dock_y)} F{c.dock_feedrate}</span><span class="c">         {% endif %}</span><span class="c"> </span><span class="d">-        M400</span><span class="c">         _LINEAR_EXIT</span><span class="c">         {% if check %}</span><span class="c">             # Did the tool really leave the head? If not, this raises with the</span><span class="c">             # tool kept as active_tool, before the head drives anywhere else.</span><span class="c">             M400</span><span class="d">-            G4 P250</span><span class="c">             _INDX_LC_STORE VAR=now</span><span class="c">             _INDX_PARK_CHECK TOOL={act}</span><span class="c">         {% endif %}</span><span class="h">@@ -709,7 +712,6 @@ gcode:</span><span class="c">     SET_GCODE_OFFSET X=0.0 Y=0.0</span><span class="c">     {% if zhop &gt; 0 %}</span><span class="c">         _TC_G0 Z={&quot;%.3f&quot;|format(hop_z)}</span><span class="d">-        M400</span><span class="c">     {% endif %}</span><span class="c">     _TC_G0 X={tool.x} Y={&quot;%.3f&quot;|format(clearance_y)}</span><span class="c"> </span><span class="h">@@ -718,9 +720,8 @@ gcode:</span><span class="c">     {% if check %}</span><span class="c">         # Empty-head load cell reading, seconds before the pickup. The seat</span><span class="c">         # check measures against it, so load cell drift (about 40 g per degree</span><span class="d">-        # C) drops out.</span><span class="a">+        # C) drops out. Read as soon as the M400 returns.</span><span class="c">         M400</span><span class="d">-        G4 P250</span><span class="c">         _INDX_LC_STORE VAR=empty</span><span class="c">     {% endif %}</span><span class="c"> </span><span class="h">@@ -731,7 +732,7 @@ gcode:</span><span class="c"> </span><span class="c">     {% if st != 2 %}</span><span class="c">         # Open latch (currently locked)</span><span class="d">-        _TC_LATCH_MOVE E={c.full_open_e} F={c.latch_feedrate} I={c.run_current}</span><span class="a">+        _TC_LATCH_MOVE E={c.full_open_e} F={c.latch_feedrate} I={c.run_current} W=0</span><span class="c">         SET_GCODE_VARIABLE MACRO=_TOOLCHANGE_VARS VARIABLE=toolhead_state VALUE=2</span><span class="c">         SAVE_VARIABLE VARIABLE=toolhead_state VALUE=2</span><span class="c">     {% endif %}</span><span class="h">@@ -739,8 +740,10 @@ gcode:</span><span class="c">     # Engagement slide to dock</span><span class="c">     G1 Y{&quot;%.3f&quot;|format(dock_y)} F{c.engage_feedrate}</span><span class="c"> </span><span class="d">-    # Lock the tool</span><span class="d">-    _TC_LATCH_MOVE E={c.full_lock_e} F={c.latch_feedrate} I={c.run_current}</span><span class="a">+    # Lock the tool, after a short pause with the head fully in the dock so the</span><span class="a">+    # tool settles against the head before the latch closes</span><span class="a">+    G4 P100</span><span class="a">+    _TC_LATCH_MOVE E={c.full_lock_e} F={c.latch_feedrate} I={c.run_current} W=0</span><span class="c">     _TC_RESTORE_ROTATION_DIST</span><span class="c"> </span><span class="c">     SET_GCODE_VARIABLE MACRO=_TOOLCHANGE_VARS VARIABLE=toolhead_state VALUE=0</span><span class="h">@@ -748,10 +751,13 @@ gcode:</span><span class="c"> </span><span class="c">     # Z hop-down is folded into _LINEAR_EXIT&#x27;s Y-clearance sprint (non-blocking)</span><span class="c">     _LINEAR_EXIT RESTORE_Z={restore_z}</span><span class="a">+    # Always stop here: the heater comes on after this (_PICKUP_FINISH), and</span><span class="a">+    # must not while the exit is still queued.</span><span class="c">     M400</span><span class="c">     {% if check %}</span><span class="d">-        # Let the load cell settle, then read it for the seat check</span><span class="d">-        G4 P300</span><span class="a">+        # Let the load cell settle, then read it for the seat check. The M400</span><span class="a">+        # after the G4 is what makes the reading wait for the dwell.</span><span class="a">+        G4 P150</span><span class="c">         M400</span><span class="c">         _INDX_LC_STORE VAR=now</span><span class="c">     {% endif %}</span></code></pre>
+  </details>
+</section>
+
+<section id="reproduce">
+  <h2>Reproducing it</h2>
+  <p>Tested on Kalico at <code>488b45d5</code> and BondtechAB/INDX at <code>ae64179</code>, on a Voron Trident 300 with eight docks. The changes are in two local branches, not yet published (full diffs in <a href="#code">The code changes</a>):</p>
+  <ul>
+    <li>Kalico, branch <code>indx-fast-latch</code>: <code>klippy/extras/indx/heater.py</code> (the <code>WAIT</code> option) and <code>docs/G-Codes.md</code>. Without <code>WAIT=0</code> the command behaves as before.</li>
+    <li>INDX, branch <code>fast-park</code>: <code>macros/indx-tc-macros.cfg</code>. It needs the Kalico change: an older Kalico ignores <code>WAIT=0</code> and stops around every latch move as before.</li>
+  </ul>
+  <p>After updating Kalico, restart the Klipper service, not just <code>RESTART</code>, so the new Python code loads.</p>
+  <p>The timing script, <code>tc-timing.py</code>, is below. It uses only the Python standard library. Run it on the printer host with an output CSV and a list of G-code commands; it sends each command through Moonraker in turn and samples the toolhead while they run:</p>
+<pre><code>python3 tc-timing.py run.csv 'CHANGE_TOOL TOOL=1 TEMP=0' M400 'CHANGE_TOOL TOOL=0 TEMP=0' M400</code></pre>
+  <p>Each command's start and end times are in the <code>#MARK</code> lines at the top of the CSV; a change's time is from the start of its <code>CHANGE_TOOL</code> to the end of the <code>M400</code> after it. The rows after that are the samples: time, X, Y, Z, head velocity, extruder velocity, nozzle temperature, target and heater power. "Standing still" in this write-up means head velocity under 1 mm/s and extruder velocity under 0.5 mm/s.</p>
+  <details class="diff">
+    <summary><b>tc-timing.py</b> <span class="stat">47 lines</span> · <a href="data:text/x-python;base64,IyEvdXNyL2Jpbi9lbnYgcHl0aG9uMwojIFJ1biBvbiB0aGUgcHJpbnRlciBob3N0LiBTYW1wbGVzIHRoZSBsaXZlIHRvb2xoZWFkIGFuZCBleHRydWRlciBzdGF0ZSB0aHJvdWdoCiMgTW9vbnJha2VyIHdoaWxlIGEgbGlzdCBvZiBHLWNvZGUgY29tbWFuZHMgcnVucyAoYWJvdXQgNCBzYW1wbGVzIGEgc2Vjb25kOyBhCiMgcXVlcnkgdGFrZXMgfjAuMjUgcyksIGFuZCB3cml0ZXMgb25lIENTViByb3cgcGVyIHNhbXBsZSBhZnRlciAjTUFSSyBsaW5lcwojIGdpdmluZyBlYWNoIGNvbW1hbmQncyBzdGFydCBhbmQgZW5kIHRpbWUuCiMgVXNhZ2UgKG9uIHRoZSBwcmludGVyIGhvc3QpOiBweXRob24zIHRjLXRpbWluZy5weSBvdXQuY3N2ICdDTUQxJyAnQ01EMicgLi4uCmltcG9ydCBqc29uLCBzeXMsIHRocmVhZGluZywgdGltZSwgdXJsbGliLnJlcXVlc3QsIHVybGxpYi5wYXJzZQoKQkFTRSA9ICJodHRwOi8vbG9jYWxob3N0OjcxMjUiCm91dCwgY21kcyA9IHN5cy5hcmd2WzFdLCBzeXMuYXJndlsyOl0KUSA9IEJBU0UgKyAiL3ByaW50ZXIvb2JqZWN0cy9xdWVyeT9tb3Rpb25fcmVwb3J0PWxpdmVfcG9zaXRpb24sbGl2ZV92ZWxvY2l0eSxsaXZlX2V4dHJ1ZGVyX3ZlbG9jaXR5JmV4dHJ1ZGVyPXRlbXBlcmF0dXJlLHRhcmdldCxwb3dlciIKcm93cywgbWFya3MsIHN0b3AgPSBbXSwgW10sIHRocmVhZGluZy5FdmVudCgpCgpkZWYgc2FtcGxlKCk6CiAgICB3aGlsZSBub3Qgc3RvcC5pc19zZXQoKToKICAgICAgICB0ID0gdGltZS50aW1lKCkKICAgICAgICB0cnk6CiAgICAgICAgICAgIHMgPSBqc29uLmxvYWQodXJsbGliLnJlcXVlc3QudXJsb3BlbihRLCB0aW1lb3V0PTIpKVsicmVzdWx0Il1bInN0YXR1cyJdCiAgICAgICAgICAgIG0sIGUgPSBzWyJtb3Rpb25fcmVwb3J0Il0sIHNbImV4dHJ1ZGVyIl0KICAgICAgICAgICAgcCA9IG1bImxpdmVfcG9zaXRpb24iXQogICAgICAgICAgICByb3dzLmFwcGVuZCgodCwgcFswXSwgcFsxXSwgcFsyXSwgbVsibGl2ZV92ZWxvY2l0eSJdLCBtWyJsaXZlX2V4dHJ1ZGVyX3ZlbG9jaXR5Il0sCiAgICAgICAgICAgICAgICAgICAgICAgICBlWyJ0ZW1wZXJhdHVyZSJdLCBlWyJ0YXJnZXQiXSwgZS5nZXQoInBvd2VyIiwgMCkpKQogICAgICAgIGV4Y2VwdCBFeGNlcHRpb24gYXMgZXg6CiAgICAgICAgICAgIHJvd3MuYXBwZW5kKCh0LCBOb25lLCBOb25lLCBOb25lLCBOb25lLCBOb25lLCBOb25lLCBOb25lLCBzdHIoZXgpKSkKICAgICAgICB0aW1lLnNsZWVwKG1heCgwLCAwLjAyNSAtICh0aW1lLnRpbWUoKSAtIHQpKSkKCnRoID0gdGhyZWFkaW5nLlRocmVhZCh0YXJnZXQ9c2FtcGxlLCBkYWVtb249VHJ1ZSkKdGguc3RhcnQoKQpmb3IgYyBpbiBjbWRzOgogICAgdDAgPSB0aW1lLnRpbWUoKQogICAgcmVxID0gdXJsbGliLnJlcXVlc3QuUmVxdWVzdChCQVNFICsgIi9wcmludGVyL2djb2RlL3NjcmlwdD8iICsgdXJsbGliLnBhcnNlLnVybGVuY29kZSh7InNjcmlwdCI6IGN9KSwgbWV0aG9kPSJQT1NUIikKICAgIHRyeToKICAgICAgICByID0gdXJsbGliLnJlcXVlc3QudXJsb3BlbihyZXEsIHRpbWVvdXQ9NjAwKS5yZWFkKCkuZGVjb2RlKClbOjgwXQogICAgZXhjZXB0IEV4Y2VwdGlvbiBhcyBleDoKICAgICAgICByID0gIkVSUk9SICIgKyBzdHIoZXgpCiAgICBtYXJrcy5hcHBlbmQoKHQwLCB0aW1lLnRpbWUoKSwgYywgcikpCiAgICBwcmludChmInt0aW1lLnRpbWUoKS10MDo3LjJmfSBzICB7Y30gIC0+IHtyfSIsIGZsdXNoPVRydWUpCiAgICBpZiByLnN0YXJ0c3dpdGgoIkVSUk9SIik6CiAgICAgICAgYnJlYWsKdGltZS5zbGVlcCgwLjUpCnN0b3Auc2V0KCk7IHRoLmpvaW4oKQp3aXRoIG9wZW4ob3V0LCAidyIpIGFzIGY6CiAgICBmb3IgbSBpbiBtYXJrczoKICAgICAgICBmLndyaXRlKCIjTUFSSywlLjNmLCUuM2YsJXNcbiIgJSAobVswXSwgbVsxXSwgbVsyXSkpCiAgICBmb3IgciBpbiByb3dzOgogICAgICAgIGYud3JpdGUoIiwiLmpvaW4oIiIgaWYgdiBpcyBOb25lIGVsc2Ugc3RyKHYpIGZvciB2IGluIHIpICsgIlxuIikKcHJpbnQoInNhbXBsZXMiLCBsZW4ocm93cykpCg==" download="tc-timing.py">download</a></summary>
+<pre><code>#!/usr/bin/env python3
+# Run on the printer host. Samples the live toolhead and extruder state through
+# Moonraker while a list of G-code commands runs (about 4 samples a second; a
+# query takes ~0.25 s), and writes one CSV row per sample after #MARK lines
+# giving each command&#x27;s start and end time.
+# Usage (on the printer host): python3 tc-timing.py out.csv &#x27;CMD1&#x27; &#x27;CMD2&#x27; ...
+import json, sys, threading, time, urllib.request, urllib.parse
+
+BASE = &quot;http://localhost:7125&quot;
+out, cmds = sys.argv[1], sys.argv[2:]
+Q = BASE + &quot;/printer/objects/query?motion_report=live_position,live_velocity,live_extruder_velocity&amp;extruder=temperature,target,power&quot;
+rows, marks, stop = [], [], threading.Event()
+
+def sample():
+    while not stop.is_set():
+        t = time.time()
+        try:
+            s = json.load(urllib.request.urlopen(Q, timeout=2))[&quot;result&quot;][&quot;status&quot;]
+            m, e = s[&quot;motion_report&quot;], s[&quot;extruder&quot;]
+            p = m[&quot;live_position&quot;]
+            rows.append((t, p[0], p[1], p[2], m[&quot;live_velocity&quot;], m[&quot;live_extruder_velocity&quot;],
+                         e[&quot;temperature&quot;], e[&quot;target&quot;], e.get(&quot;power&quot;, 0)))
+        except Exception as ex:
+            rows.append((t, None, None, None, None, None, None, None, str(ex)))
+        time.sleep(max(0, 0.025 - (time.time() - t)))
+
+th = threading.Thread(target=sample, daemon=True)
+th.start()
+for c in cmds:
+    t0 = time.time()
+    req = urllib.request.Request(BASE + &quot;/printer/gcode/script?&quot; + urllib.parse.urlencode({&quot;script&quot;: c}), method=&quot;POST&quot;)
+    try:
+        r = urllib.request.urlopen(req, timeout=600).read().decode()[:80]
+    except Exception as ex:
+        r = &quot;ERROR &quot; + str(ex)
+    marks.append((t0, time.time(), c, r))
+    print(f&quot;{time.time()-t0:7.2f} s  {c}  -&gt; {r}&quot;, flush=True)
+    if r.startswith(&quot;ERROR&quot;):
+        break
+time.sleep(0.5)
+stop.set(); th.join()
+with open(out, &quot;w&quot;) as f:
+    for m in marks:
+        f.write(&quot;#MARK,%.3f,%.3f,%s\n&quot; % (m[0], m[1], m[2]))
+    for r in rows:
+        f.write(&quot;,&quot;.join(&quot;&quot; if v is None else str(v) for v in r) + &quot;\n&quot;)
+print(&quot;samples&quot;, len(rows))</code></pre>
+  </details>
+  <div class="callout"><b>Slicer estimate</b>Set the slicer's tool change time from a timed mid-print change, not the cold test. This printer uses 14 s in OrcaSlicer.</div>
+</section>
+
+</main>
+<script>
+(function () {
+  var root = document.documentElement, btn = document.getElementById('themeBtn');
+  function apply(t) { if (t === 'dark') root.setAttribute('data-theme', 'dark'); else root.removeAttribute('data-theme');
+    btn.textContent = t === 'dark' ? 'Light mode' : 'Dark mode'; }
+  var saved = null; try { saved = localStorage.getItem('indx-theme'); } catch (e) {}
+  apply(saved === 'dark' ? 'dark' : 'light');
+  btn.addEventListener('click', function () {
+    var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    apply(next); try { localStorage.setItem('indx-theme', next); } catch (e) {}
+  });
+})();
+</script>
+</body>
+</html>
